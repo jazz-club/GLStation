@@ -1,0 +1,36 @@
+#pragma once
+
+#include "grid/GridComponent.hpp"
+#include "grid/Node.hpp"
+
+namespace GLStation::Grid {
+
+class Load : public GridComponent {
+public:
+  Load(std::string name, Node *connectedNode, Core::f64 maxPowerKw);
+
+  void tick(Core::Tick currentTick) override;
+  std::string toString() const override;
+
+  Core::f64 getCurrentConsumption() const { return m_currentPowerKw; }
+  Core::f64 getPowerFactor() const { return m_powerFactor; }
+  void setPowerFactor(Core::f64 pf) { m_powerFactor = pf; }
+
+  void setMaxPower(Core::f64 pKw) { m_maxPowerKw = pKw; }
+  Core::f64 getMaxPower() const { return m_maxPowerKw; }
+
+  void shed() { m_isShed = true; }
+  void restore() { m_isShed = false; }
+  bool isShed() const { return m_isShed; }
+
+  Node *getConnectedNode() const { return m_connectedNode; }
+
+private:
+  Node *m_connectedNode;
+  Core::f64 m_maxPowerKw;
+  Core::f64 m_currentPowerKw;
+  Core::f64 m_powerFactor;
+  bool m_isShed;
+};
+
+} // namespace GLStation::Grid
