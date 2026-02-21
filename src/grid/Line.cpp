@@ -7,8 +7,8 @@ namespace GLStation::Grid {
     	receiver pathing, I = Y ΔV; losses P_Loss = |I|^2 R
     	useful for admittance matrix population in the power solver
     	since its lower level at line
-    	Z=r + jx while Y = 1/Z as long as |Z| ≤ ε, prevents impedence rolling over
-		to division by 0, forces impedence to 0 when needed current amp limit is set
+    	Z=r + jx while Y = 1/Z as long as |Z| ≤ ε, prevents impedance rolling over
+		to division by 0, forces impedance to 0 when needed current amp limit is set
 		to 500amps, fix when get data
 */
 Line::Line(std::string name, Node *from, Node *to, Core::f64 r, Core::f64 x)

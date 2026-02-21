@@ -16,6 +16,9 @@
 */
 namespace GLStation::Simulation {
 
+/*
+		rebuilds admittance matrix upon update, kinda redundant atm
+*/
 std::unique_ptr<Util::SparseMatrix<std::complex<Core::f64>>>
 	PowerSolver::s_yBus = nullptr;
 static bool s_topologyDirty = true;
@@ -43,6 +46,10 @@ void PowerSolver::invalidateYBus() { s_topologyDirty = true; }
 
 static const Core::f64 S_BASE = 100000.0;
 
+/*
+		the Ybus admittance matrix populator yayy!!! 
+		zbase = V^2/Sbase per node, Y = 1/Z per branch in pu lines add y between m_from and m_to
+*/
 void PowerSolver::buildYBus(
 	const std::vector<std::shared_ptr<::GLStation::Grid::Substation>>
 		&substations) {
@@ -182,6 +189,9 @@ struct PowerMismatch {
 	Core::f64 deltaQ;
 };
 
+/*
+		function for gaussian eliminiation, partial credit to https://ioinformatic.org/index.php/JAIEA/article/download/536/376 
+*/
 static void simpleSolve(std::vector<std::vector<Core::f64>> &A,
 						std::vector<Core::f64> &b, std::vector<Core::f64> &x) {
 	size_t n = b.size();
@@ -212,6 +222,13 @@ static void simpleSolve(std::vector<std::vector<Core::f64>> &A,
 	}
 }
 
+/*
+		i hope newton and raphson both rot in hell
+		p and Q mismatch calculated from Y*V vs expected P Q divergence from loads 
+		Q = P sqrt(1-pf^2)/pf for loads, use in jacobian matrix
+		J dx = b for angle and voltage updates, then apply dx to PQ and PV buses until convergence, return if mismatches have been eliminiated
+		https://www.ijert.org/research/load-flow-solution-u-sing-simplified-newton-raphson-method-IJERTV2IS121281.pdf
+*/
 bool PowerSolver::runIteration() {
 	if (!s_yBus)
 		return true;

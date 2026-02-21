@@ -8,14 +8,51 @@
 #include "sim/PowerSolver.hpp"
 #include "util/Random.hpp"
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <map>
 #include <sstream>
+#include <string>
+#include <vector>
 
 namespace GLStation::Simulation {
 
+static std::string trimField(std::string s) {
+	while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back())))
+		s.pop_back();
+	while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front())))
+		s.erase(0, 1);
+	return s;
+}
+
+static std::vector<std::string> parseCsvLine(const std::string &line) {
+	std::vector<std::string> out;
+	std::string field;
+	for (size_t i = 0; i < line.size(); ++i) {
+		if (line[i] == '"') {
+			field.clear();
+			++i;
+			while (i < line.size() && line[i] != '"') {
+				field += line[i++];
+			}
+			out.push_back(field);
+		} else if (line[i] == ',') {
+			out.push_back(trimField(field));
+			field.clear();
+		} else {
+			field += line[i];
+		}
+	}
+	out.push_back(trimField(field));
+	return out;
+}
+
+/*
+		load shreading thresholds
+		erik you probably understand 
+*/
 struct UflsStage {
 	Core::f64 freqThresholdHz;
 	Core::f64 shedFraction;
@@ -28,6 +65,12 @@ static UflsStage s_uflsStages[] = {
 	{48.4, 0.20, false},
 	{48.0, 0.30, false},
 };
+
+/*
+		sources;
+		https://www.aemo.com.au/energy-systems/electricity/wholesale-electricity-market-wem/system-operations/under-frequency-load-shedding
+		https://www.sciencedirect.com/science/article/pii/S1364032123001508
+*/
 
 struct GridLoadingContext {
 	std::map<std::string, std::shared_ptr<Grid::Substation>> substations;
@@ -47,8 +90,8 @@ void Engine::initialise() {
 	for (auto &s : s_uflsStages)
 		s.triggered = false;
 
-	if (std::filesystem::exists("grid.txt")) {
-		std::ifstream file("grid.txt");
+	if (std::filesystem::exists("grid.csv")) {
+		std::ifstream file("grid.csv");
 		if (file.is_open()) {
 			GridLoadingContext ctx;
 			std::shared_ptr<Grid::Substation> defaultSub;
@@ -62,23 +105,17 @@ void Engine::initialise() {
 
 			std::string line;
 			while (std::getline(file, line)) {
-				if (line.empty() || line[0] == '#')
+				if (line.empty())
 					continue;
-				std::stringstream ss(line);
-				std::string type;
-				ss >> type;
+				std::vector<std::string> f = parseCsvLine(line);
+				if (f.empty())
+					continue;
+				std::string type = f[0];
 				for (auto &c : type)
 					c = std::toupper(c);
 
-				if (type == "[SUBSTATION]") {
-					std::string subName;
-					std::getline(ss, subName);
-					while (!subName.empty() &&
-						   (subName.front() == ' ' || subName.front() == '\t'))
-						subName.erase(0, 1);
-					while (!subName.empty() &&
-						   (subName.back() == ' ' || subName.back() == '\r'))
-						subName.pop_back();
+				if (type == "SUBSTATION") {
+					std::string subName = f.size() > 1 ? trimField(f[1]) : "";
 					if (!subName.empty())
 						ensureSub(subName);
 					continue;
@@ -86,64 +123,60 @@ void Engine::initialise() {
 
 				ensureSub("Imported Substation");
 
-				if (type == "NODE") {
-					std::string name;
-					Core::f64 kv;
-					ss >> name >> kv;
+				if (type == "NODE" && f.size() >= 3) {
+					std::string name = f[1];
+					Core::f64 kv = std::stod(f[2]);
 					auto node = std::make_shared<Grid::Node>(name, kv);
 					ctx.nodes[name] = node.get();
 					defaultSub->addComponent(node);
-				} else if (type == "LINE") {
-					std::string name, from, to;
-					Core::f64 r, x;
-					ss >> name >> from >> to >> r >> x;
+				} else if (type == "LINE" && f.size() >= 6) {
+					std::string name = f[1], from = f[2], to = f[3];
+					Core::f64 r = std::stod(f[4]), x = std::stod(f[5]);
 					if (ctx.nodes.count(from) && ctx.nodes.count(to)) {
 						auto lineObj = std::make_shared<Grid::Line>(
 							name, ctx.nodes[from], ctx.nodes[to], r, x);
 						defaultSub->addComponent(lineObj);
 					}
-				} else if (type == "LOAD") {
-					std::string name, node;
-					Core::f64 kw;
-					ss >> name >> node >> kw;
+				} else if (type == "LOAD" && f.size() >= 4) {
+					std::string name = f[1], node = f[2];
+					Core::f64 kw = std::stod(f[3]);
 					if (ctx.nodes.count(node)) {
 						auto loadObj = std::make_shared<Grid::Load>(
 							name, ctx.nodes[node], kw);
 						defaultSub->addComponent(loadObj);
 					}
-				} else if (type == "GEN" || type == "GENERATOR") {
-					std::string name, node, modeStr;
-					Core::f64 p, v, qmin, qmax;
-					if (ss >> name >> node >> modeStr >> p >> v >> qmin >>
-						qmax) {
-						for (auto &c : modeStr)
-							c = std::tolower(c);
-						if (ctx.nodes.count(node)) {
-							Grid::GeneratorMode mode = Grid::GeneratorMode::PQ;
-							if (modeStr == "slack")
-								mode = Grid::GeneratorMode::Slack;
-							else if (modeStr == "pv")
-								mode = Grid::GeneratorMode::PV;
-							auto gen = std::make_shared<Grid::Generator>(
-								name, ctx.nodes[node], mode);
-							gen->setTargetP(p);
-							gen->setTargetV(v);
-							gen->setQLimits(qmin, qmax);
-							defaultSub->addComponent(gen);
-						}
+				} else if ((type == "GEN" || type == "GENERATOR") &&
+						   f.size() >= 8) {
+					std::string name = f[1], node = f[2], modeStr = f[3];
+					Core::f64 p = std::stod(f[4]), v = std::stod(f[5]),
+							  qmin = std::stod(f[6]), qmax = std::stod(f[7]);
+					for (auto &c : modeStr)
+						c = std::tolower(c);
+					if (ctx.nodes.count(node)) {
+						Grid::GeneratorMode mode = Grid::GeneratorMode::PQ;
+						if (modeStr == "slack")
+							mode = Grid::GeneratorMode::Slack;
+						else if (modeStr == "pv")
+							mode = Grid::GeneratorMode::PV;
+						auto gen = std::make_shared<Grid::Generator>(
+							name, ctx.nodes[node], mode);
+						gen->setTargetP(p);
+						gen->setTargetV(v);
+						gen->setQLimits(qmin, qmax);
+						defaultSub->addComponent(gen);
 					}
-				} else if (type == "TRAFO" || type == "TRANSFORMER") {
-					std::string name, pri, sec;
-					Core::f64 r, x, tap;
-					ss >> name >> pri >> sec >> r >> x >> tap;
+				} else if ((type == "TRAFO" || type == "TRANSFORMER") &&
+						   f.size() >= 7) {
+					std::string name = f[1], pri = f[2], sec = f[3];
+					Core::f64 r = std::stod(f[4]), x = std::stod(f[5]),
+							  tap = std::stod(f[6]);
 					if (ctx.nodes.count(pri) && ctx.nodes.count(sec)) {
 						auto trafo = std::make_shared<Grid::Transformer>(
 							name, ctx.nodes[pri], ctx.nodes[sec], r, x, tap);
 						defaultSub->addComponent(trafo);
 					}
-				} else if (type == "BREAKER") {
-					std::string name, from, to;
-					ss >> name >> from >> to;
+				} else if (type == "BREAKER" && f.size() >= 4) {
+					std::string name = f[1], from = f[2], to = f[3];
 					if (ctx.nodes.count(from) && ctx.nodes.count(to)) {
 						auto brk = std::make_shared<Grid::Breaker>(
 							name, ctx.nodes[from], ctx.nodes[to]);
@@ -158,6 +191,10 @@ void Engine::initialise() {
 	std::cout << "Grid initialised." << std::endl;
 }
 
+/*
+		Fallback grid, but uh, this is sorta ass and the point at which im giving up on this project because theres a bridge between the real world 
+		and demos we cant really get over at the moment
+*/
 void Engine::createDemoGrid() {
 	auto sub = std::make_shared<Grid::Substation>("Demo");
 
@@ -220,6 +257,11 @@ void Engine::createDemoGrid() {
 	m_substations.push_back(sub);
 }
 
+/*
+		tick manager, need to add debug lines per component
+		most of the logic here is self explanatory because of the component names
+		slack and loading balacing and AGC trigger at the end of every tick, probably not the most optimised solution
+*/
 void Engine::tick() {
 	m_currentTick++;
 	m_scenarioManager.update(m_currentTick);
@@ -265,6 +307,10 @@ void Engine::tick() {
 	processProtectionRelays();
 }
 
+/*
+		hardcoded to 50hz still
+		df/dt ∝ (P_gen - P_load - P_loss) / (2HSbase), range is 49-51(?) 
+*/
 void Engine::updateFrequencyDynamics() {
 	const Core::f64 H = 5.0;
 	const Core::f64 Sbase = 100000.0;
@@ -276,6 +322,11 @@ void Engine::updateFrequencyDynamics() {
 	m_systemFrequency = std::clamp(m_systemFrequency, 47.0, 52.0);
 }
 
+/*
+		-df * gain for slope across gens
+		i might be misunderstanding the underlying logic 
+		https://www.academia.edu/32675657/Automatic_Gain_Control_AGC_in_Receivers
+*/
 void Engine::applyAGC() {
 	Core::f64 df = m_systemFrequency - 50.0;
 	if (std::abs(df) < 0.005)
@@ -292,6 +343,9 @@ void Engine::applyAGC() {
 	}
 }
 
+/*
+		redundant until scenario manager gets somewhere but breaker logic
+*/
 void Engine::processProtectionRelays() {
 	for (auto &sub : m_substations) {
 		std::vector<Grid::Breaker *> breakers;
@@ -313,7 +367,7 @@ void Engine::processProtectionRelays() {
 									  << line->getName() << " (" << std::fixed
 									  << std::setprecision(1) << iMag << " A > "
 									  << line->getCurrentLimit()
-									  << " A limit). Tripping breaker: "
+									  << "A limit). Tripping breaker: "
 									  << brk->getName() << "\n";
 							break;
 						}
@@ -410,4 +464,9 @@ bool Engine::setGenTargetPById(Core::u64 id, Core::f64 powerKw) {
 	return false;
 }
 
+/*
+		IDs are not mapped to components, this is a linear search over the temporary csv
+		will likely not scale well if we want to start doing ridiculous shit
+		open to any suggestions about component mapping and databasing/memory indexing
+*/
 } // namespace GLStation::Simulation

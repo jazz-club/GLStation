@@ -4,7 +4,7 @@
 #include <sstream>
 
 /*
-		connects grid components using series impedence
+		connects grid components using series impedance
     	voltage loss is |I|^2 x R , |Z| ≤ ε, refer to grid/Line
 		voltage is calculated by taking the current deviation multiplied by the admittance
 */

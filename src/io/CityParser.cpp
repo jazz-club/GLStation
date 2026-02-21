@@ -155,7 +155,7 @@ std::string CityParser::fetchOsmData(const std::string &cityName) {
 
 /*
 		i think haversince difference is the easiest way to calculate this but i might be wrong
-		still unutilised but i reckoned this would factor into impedence over distance 
+		still unutilised but i reckoned this would factor into impedance over distance 
 */
 double CityParser::calculateDistance(double lat1, double lon1, double lat2,
 									 double lon2) {
@@ -173,15 +173,12 @@ void CityParser::generateGridFile(
 	const std::string &cityName, const std::vector<OSMNode> &substations,
 	const std::vector<OSMWay> &lines,
 	const std::map<long long, OSMNode> &allNodes) {
-	std::ofstream file("grid.txt");
+	std::ofstream file("grid.csv");
 	std::string subName = sanitiseName(cityName);
 	if (subName.empty() || subName == "unnamed")
 		subName = "Imported_Grid";
 
-	file << "# OSM Generated Grid\n";
-	file << "# Area: " << cityName << "\n\n";
-
-	file << "[SUBSTATION] " << subName << "\n";
+	file << "SUBSTATION," << subName << "\n";
 
 	std::map<long long, std::string> nodeNames;
 	for (const auto &sub : substations) {
@@ -202,16 +199,16 @@ void CityParser::generateGridFile(
 			}
 		}
 
-		file << "NODE " << name << " " << kv << "\n";
+		file << "NODE," << name << "," << kv << "\n";
 		nodeNames[sub.id] = name;
-		file << "LOAD Load_" << name << " " << name << " 10000.0\n";
+		file << "LOAD,Load_" << name << "," << name << ",10000.0\n";
 	}
 
 	if (!substations.empty()) {
 		std::string firstNode = nodeNames[substations[0].id];
 		std::string slackName = "Slack_" + firstNode;
-		file << "GENERATOR " << slackName << " " << firstNode
-			 << " slack 0.0 1.05 -1000000.0 1000000.0\n";
+		file << "GEN," << slackName << "," << firstNode
+			 << ",slack,0.0,1.05,-1000000.0,1000000.0\n";
 	}
 
 	for (const auto &way : lines) {
@@ -238,8 +235,8 @@ void CityParser::generateGridFile(
 			double r = 0.01 * dist;
 			double x = 0.1 * dist;
 			std::string lineName = osmWayName(way, "Line");
-			file << "LINE " << lineName << " " << nodeNames[startNodeId] << " "
-				 << nodeNames[endNodeId] << " " << r << " " << x << " 1000.0\n";
+			file << "LINE," << lineName << "," << nodeNames[startNodeId] << ","
+				 << nodeNames[endNodeId] << "," << r << "," << x << "\n";
 		}
 	}
 
