@@ -33,7 +33,7 @@ class CityParser {
 								 const std::vector<OSMNode> &substations,
 								 const std::vector<OSMWay> &lines,
 								 const std::map<long long, OSMNode> &allNodes);
-	static std::string sanitizeName(const std::string &s);
+	static std::string sanitiseName(const std::string &s);
 	static std::string osmWayName(const OSMWay &way,
 								  const std::string &fallbackPrefix);
 };

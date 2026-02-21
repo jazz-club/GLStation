@@ -472,7 +472,7 @@ int main() {
 					}
 				}
 			} else if (cmd == "tree") {
-				std::cout << "\n=== GRID TOP OLOGY ===" << std::endl;
+				std::cout << "\n=== GRID TOPOLOGY ===" << std::endl;
 				for (const auto &sub : engine.getSubstations()) {
 					std::cout << "\n[Substation: " << sub->getName() << "]"
 							  << std::endl;
@@ -911,7 +911,7 @@ int main() {
 					std::cout << "Usage: import [Name]" << std::endl;
 				}
 			} else {
-				std::cout << "Error: Unknown Vommand '" << cmd << "'."
+				std::cout << "Error: Unknown Command '" << cmd << "'."
 						  << std::endl;
 			}
 		}

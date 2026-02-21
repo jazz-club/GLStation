@@ -31,7 +31,7 @@ static std::string urlEncode(const std::string &value) {
 /*
 		OSM is baby please dont feed baby unsanitised name
 */
-std::string CityParser::sanitizeName(const std::string &s) {
+std::string CityParser::sanitiseName(const std::string &s) {
 	std::string out;
 	out.reserve(s.size());
 	for (unsigned char c : s) {
@@ -61,11 +61,11 @@ std::string CityParser::sanitizeName(const std::string &s) {
 std::string CityParser::osmWayName(const OSMWay &way,
 								   const std::string &fallbackPrefix) {
 	if (way.tags.count("name") && !way.tags.at("name").empty())
-		return sanitizeName(way.tags.at("name"));
+		return sanitiseName(way.tags.at("name"));
 	if (way.tags.count("ref") && !way.tags.at("ref").empty())
-		return sanitizeName(way.tags.at("ref"));
+		return sanitiseName(way.tags.at("ref"));
 	if (way.tags.count("operator") && !way.tags.at("operator").empty())
-		return sanitizeName(way.tags.at("operator") + "_" +
+		return sanitiseName(way.tags.at("operator") + "_" +
 							std::to_string(way.id));
 	return fallbackPrefix + "_" + std::to_string(way.id);
 }
@@ -174,7 +174,7 @@ void CityParser::generateGridFile(
 	const std::vector<OSMWay> &lines,
 	const std::map<long long, OSMNode> &allNodes) {
 	std::ofstream file("grid.txt");
-	std::string subName = sanitizeName(cityName);
+	std::string subName = sanitiseName(cityName);
 	if (subName.empty() || subName == "unnamed")
 		subName = "Imported_Grid";
 
@@ -187,9 +187,9 @@ void CityParser::generateGridFile(
 	for (const auto &sub : substations) {
 		std::string name;
 		if (sub.tags.count("name") && !sub.tags.at("name").empty())
-			name = sanitizeName(sub.tags.at("name"));
+			name = sanitiseName(sub.tags.at("name"));
 		else if (sub.tags.count("ref") && !sub.tags.at("ref").empty())
-			name = "Sub_" + sanitizeName(sub.tags.at("ref"));
+			name = "Sub_" + sanitiseName(sub.tags.at("ref"));
 		else
 			name = "Substation_" + std::to_string(sub.id);
 
