@@ -9,15 +9,15 @@
 namespace GLStation::Simulation {
 
 class ScenarioManager {
-public:
-  using EventAction = std::function<void()>;
+  public:
+	using EventAction = std::function<void()>;
 
-  void addEvent(Core::u64 tick, EventAction action);
-  void update(Core::u64 currentTick);
-  std::vector<Core::u64> getScheduledTicks() const;
+	void addEvent(Core::u64 tick, EventAction action);
+	void update(Core::u64 currentTick);
+	std::vector<Core::u64> getScheduledTicks() const;
 
-private:
-  std::map<Core::u64, std::vector<EventAction>> m_events;
+  private:
+	std::map<Core::u64, std::vector<EventAction>> m_events;
 };
 
 } // namespace GLStation::Simulation

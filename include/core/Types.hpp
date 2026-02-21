@@ -3,7 +3,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-
+/*
+		Type definitions for signed and unsigned ints
+		Pi is used for phase radian math and haversine distance
+		calculations for city parser, which is still unutilised Epsilon is used
+		for impedance inversion for the lines to calculate permittivity
+*/
 namespace GLStation::Core {
 
 using u8 = uint8_t;
