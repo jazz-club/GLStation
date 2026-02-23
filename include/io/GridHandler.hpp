@@ -8,7 +8,7 @@
 
 namespace GLStation::Simulation {
 
-class CityParser {
+class GridHandler {
   public:
 	static bool importCity(const std::string &cityName);
 	static std::vector<std::string> getSuggestions(const std::string &query);

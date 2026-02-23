@@ -4,6 +4,7 @@
 #include "grid/Load.hpp"
 #include "grid/Node.hpp"
 #include "grid/Transformer.hpp"
+#include "io/CSVHandler.hpp"
 #include "sim/Engine.hpp"
 #include "sim/PowerSolver.hpp"
 #include "util/Random.hpp"
@@ -18,36 +19,6 @@
 #include <vector>
 
 namespace GLStation::Simulation {
-
-static std::string trimField(std::string s) {
-	while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back())))
-		s.pop_back();
-	while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front())))
-		s.erase(0, 1);
-	return s;
-}
-
-static std::vector<std::string> parseCsvLine(const std::string &line) {
-	std::vector<std::string> out;
-	std::string field;
-	for (size_t i = 0; i < line.size(); ++i) {
-		if (line[i] == '"') {
-			field.clear();
-			++i;
-			while (i < line.size() && line[i] != '"') {
-				field += line[i++];
-			}
-			out.push_back(field);
-		} else if (line[i] == ',') {
-			out.push_back(trimField(field));
-			field.clear();
-		} else {
-			field += line[i];
-		}
-	}
-	out.push_back(trimField(field));
-	return out;
-}
 
 /*
 		load shreading thresholds
@@ -107,7 +78,8 @@ void Engine::initialise() {
 			while (std::getline(file, line)) {
 				if (line.empty())
 					continue;
-				std::vector<std::string> f = parseCsvLine(line);
+				std::vector<std::string> f =
+					Util::CSVHandler::parseCSVLine(line);
 				if (f.empty())
 					continue;
 				std::string type = f[0];
@@ -115,7 +87,8 @@ void Engine::initialise() {
 					c = std::toupper(c);
 
 				if (type == "SUBSTATION") {
-					std::string subName = f.size() > 1 ? trimField(f[1]) : "";
+					std::string subName =
+						f.size() > 1 ? Util::CSVHandler::trimField(f[1]) : "";
 					if (!subName.empty())
 						ensureSub(subName);
 					continue;
@@ -462,6 +435,31 @@ bool Engine::setGenTargetPById(Core::u64 id, Core::f64 powerKw) {
 					return true;
 				}
 	return false;
+}
+
+void Engine::exportVoltagesToCSV(const std::string &filename) {
+	bool needsHeader =
+		std::ifstream(filename).peek() == std::ifstream::traits_type::eof();
+	std::ofstream file(filename, std::ios::app);
+	if (!file.is_open())
+		return;
+
+	if (needsHeader) {
+		Util::CSVHandler::writeRow(
+			file, {"Tick", "Substation", "Node", "Voltage_Mag", "Voltage_Ang"});
+	}
+
+	for (const auto &sub : m_substations) {
+		for (const auto &comp : sub->getComponents()) {
+			if (auto node = dynamic_cast<Grid::Node *>(comp.get())) {
+				std::complex<Core::f64> voltage = node->getVoltage();
+				Util::CSVHandler::writeRow(
+					file, {std::to_string(m_currentTick), sub->getName(),
+						   node->getName(), std::to_string(std::abs(voltage)),
+						   std::to_string(std::arg(voltage))});
+			}
+		}
+	}
 }
 
 /*

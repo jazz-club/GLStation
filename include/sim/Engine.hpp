@@ -30,6 +30,7 @@ class Engine {
 	bool closeBreakerById(Core::u64 id);
 	bool setLoadPowerById(Core::u64 id, Core::f64 powerKw);
 	bool setGenTargetPById(Core::u64 id, Core::f64 powerKw);
+	void exportVoltagesToCSV(const std::string &filename);
 
   private:
 	void processProtectionRelays();

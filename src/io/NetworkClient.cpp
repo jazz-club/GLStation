@@ -5,13 +5,10 @@
 #include <windows.h>
 #include <winhttp.h>
 
-/*
-		temporary, need to write some sort of unified solution at some point
-*/
 namespace GLStation::Util {
 
 NetworkClient::NetworkClient() : m_handle(nullptr) {
-	m_handle = WinHttpOpen(L"GLSStation", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+	m_handle = WinHttpOpen(L"GLStation", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
 						   WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
 }
 
@@ -139,7 +136,7 @@ NetworkResponse NetworkClient::get(const std::string &url) {
 	DWORD timeout = 30000;
 	WinHttpSetOption(hRequest, WINHTTP_OPTION_RECEIVE_TIMEOUT, &timeout,
 					 sizeof(timeout));
-	WinHttpAddRequestHeaders(hRequest, L"User-Agent: GLSStation\r\n", (DWORD)-1,
+	WinHttpAddRequestHeaders(hRequest, L"User-Agent: GLStation\r\n", (DWORD)-1,
 							 WINHTTP_ADDREQ_FLAG_ADD);
 	bool ok = WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
 								 WINHTTP_NO_REQUEST_DATA, 0, 0, 0);
@@ -181,7 +178,7 @@ NetworkResponse NetworkClient::get(const std::string &url) {
 
 namespace GLStation::Util {
 
-static size_t WriteCallback(char *ptr, size_t size, size_t nmemb,
+static size_t writeCallback(char *ptr, size_t size, size_t nmemb,
 							void *userdata) {
 	size_t total = size * nmemb;
 	std::string *out = static_cast<std::string *>(userdata);
@@ -202,35 +199,6 @@ NetworkClient::~NetworkClient() {
 	curl_global_cleanup();
 }
 
-NetworkResponse NetworkClient::post(const std::string &url,
-									const std::string &body) {
-	NetworkResponse response = {false, "", 0, ""};
-	if (!m_handle) {
-		response.errorMessage = "curl uninitialised";
-		return response;
-	}
-	CURL *curl = static_cast<CURL *>(m_handle);
-	std::string responseBody;
-	curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
-	curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)body.size());
-	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &responseBody);
-	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
-	curl_easy_setopt(curl, CURLOPT_USERAGENT, "GLSStation");
-	CURLcode res = curl_easy_perform(curl);
-	if (res != CURLE_OK) {
-		response.errorMessage = curl_easy_strerror(res);
-		return response;
-	}
-	long code = 0;
-	curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
-	response.statusCode = (unsigned long)code;
-	response.body = std::move(responseBody);
-	response.success = (response.statusCode == 200);
-	return response;
-}
-
 NetworkResponse NetworkClient::get(const std::string &url) {
 	NetworkResponse response = {false, "", 0, ""};
 	if (!m_handle) {
@@ -241,10 +209,10 @@ NetworkResponse NetworkClient::get(const std::string &url) {
 	std::string responseBody;
 	curl_easy_reset(curl);
 	curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &responseBody);
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
-	curl_easy_setopt(curl, CURLOPT_USERAGENT, "GLSStation");
+	curl_easy_setopt(curl, CURLOPT_USERAGENT, "GLStation");
 	CURLcode res = curl_easy_perform(curl);
 	if (res != CURLE_OK) {
 		response.errorMessage = curl_easy_strerror(res);
@@ -252,7 +220,38 @@ NetworkResponse NetworkClient::get(const std::string &url) {
 	}
 	long code = 0;
 	curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
-	response.statusCode = (unsigned long)code;
+	response.statusCode = static_cast<unsigned long>(code);
+	response.body = std::move(responseBody);
+	response.success = (response.statusCode == 200);
+	return response;
+}
+
+NetworkResponse NetworkClient::post(const std::string &url,
+									const std::string &body) {
+	NetworkResponse response = {false, "", 0, ""};
+	if (!m_handle) {
+		response.errorMessage = "curl uninitialised";
+		return response;
+	}
+	CURL *curl = static_cast<CURL *>(m_handle);
+	std::string responseBody;
+	curl_easy_reset(curl);
+	curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
+	curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE,
+					 static_cast<long>(body.size()));
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
+	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &responseBody);
+	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
+	curl_easy_setopt(curl, CURLOPT_USERAGENT, "GLStation");
+	CURLcode res = curl_easy_perform(curl);
+	if (res != CURLE_OK) {
+		response.errorMessage = curl_easy_strerror(res);
+		return response;
+	}
+	long code = 0;
+	curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
+	response.statusCode = static_cast<unsigned long>(code);
 	response.body = std::move(responseBody);
 	response.success = (response.statusCode == 200);
 	return response;

@@ -12,7 +12,7 @@ namespace GLStation::Grid {
 
 /*
 		refer to https://repository.tilburguniversity.edu/server/api/core/bitstreams/dd61c107-5eb3-4b21-97d7-88d7b86ed0b2/content
-		solve as Q = P √(1−pf²)/pf in solver
+		solve as Q = P √(1−pf^2)/pf in solver
 */
 Load::Load(std::string name, Node *connectedNode, Core::f64 maxPowerKw)
 	: GridComponent(std::move(name)), m_connectedNode(connectedNode),

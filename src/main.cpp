@@ -3,8 +3,8 @@
 #include "grid/Line.hpp"
 #include "grid/Load.hpp"
 #include "grid/Transformer.hpp"
-#include "io/CityParser.hpp"
-#include "io/DataManager.hpp"
+#include "io/GridHandler.hpp"
+#include "io/InputHandler.hpp"
 #include "sim/Engine.hpp"
 #include <cctype>
 #include <chrono>
@@ -68,13 +68,6 @@ static void enableAnsiIfPossible() {
 #else
 	s_ansiEnabled = true;
 #endif
-}
-
-static void trim(std::string &s) {
-	while (!s.empty() && s.front() == ' ')
-		s.erase(0, 1);
-	while (!s.empty() && s.back() == ' ')
-		s.pop_back();
 }
 
 static GLStation::Core::u64 parseTicksFromString(const std::string &arg) {
@@ -308,16 +301,19 @@ int main() {
 					  << std::flush;
 			if (!std::getline(std::cin, line))
 				break;
+			line = GLStation::Util::InputHandler::trim(line);
 			if (line.empty())
 				continue;
 
 			std::stringstream ss(line);
 			std::string cmd;
 			ss >> cmd;
+			std::string cmdNorm =
+				GLStation::Util::InputHandler::normaliseForComparison(cmd);
 
-			if (cmd == "exit")
+			if (cmdNorm == "exit")
 				break;
-			else if (cmd == "help") {
+			else if (cmdNorm == "help") {
 				std::cout << "\nCommands\n"
 						  << "==========\n\n"
 						  << "exit\n"
@@ -337,7 +333,7 @@ int main() {
 							 "<tick> <id> [kW]\n"
 						  << "import <name>\n"
 						  << std::endl;
-			} else if (cmd == "tick") {
+			} else if (cmdNorm == "tick") {
 				std::string arg;
 				ss >> arg;
 				GLStation::Core::u64 count = parseTicksFromString(arg);
@@ -345,10 +341,14 @@ int main() {
 					engine.tick();
 				std::cout << "Advanced " << count << " ticks (" << count
 						  << "ms sim time)." << std::endl;
-			} else if (cmd == "run") {
+			} else if (cmdNorm == "run") {
 				std::string durStr, intStr;
 				ss >> durStr >> intStr;
-				const bool infiniteMode = (durStr == "fast" || durStr == "inf");
+				std::string durNorm =
+					GLStation::Util::InputHandler::normaliseForComparison(
+						durStr);
+				const bool infiniteMode =
+					(durNorm == "fast" || durNorm == "inf");
 				if (infiniteMode) {
 					GLStation::Core::u64 intervalTicks = 1000;
 					if (!intStr.empty())
@@ -407,7 +407,7 @@ int main() {
 					std::cout << "\nDone. " << durationTicks << " ticks in "
 							  << ms << "ms." << std::endl;
 				}
-			} else if (cmd == "status") {
+			} else if (cmdNorm == "status") {
 				std::cout << "\n--- SYSTEM OVERVIEW ---" << std::endl;
 				std::cout << "Frequency:   " << std::setw(8) << std::fixed
 						  << std::setprecision(3) << engine.getSystemFrequency()
@@ -432,31 +432,32 @@ int main() {
 				for (const auto &sub : engine.getSubstations()) {
 					std::cout << sub->toString() << std::endl;
 				}
-			} else if (cmd == "find") {
+			} else if (cmdNorm == "find") {
 				std::string query;
 				ss >> query;
+				query = GLStation::Util::InputHandler::trim(query);
 				std::cout << "\nSearching for '" << query << "':" << std::endl;
 				bool found = false;
 				std::vector<std::pair<GLStation::Core::u64, std::string>>
 					partial;
-				auto lower = [](std::string s) {
-					for (auto &c : s)
-						c = (char)std::tolower((unsigned char)c);
-					return s;
-				};
-				std::string qLower = lower(query);
+				std::string qNorm =
+					GLStation::Util::InputHandler::normaliseForComparison(
+						query);
 				for (const auto &sub : engine.getSubstations()) {
 					for (const auto &comp : sub->getComponents()) {
 						std::string name = comp->getName();
-						if (name.find(query) != std::string::npos) {
+						std::string nameNorm = GLStation::Util::InputHandler::
+							normaliseForComparison(name);
+						if (name.find(query) != std::string::npos ||
+							(!query.empty() &&
+							 nameNorm.find(qNorm) != std::string::npos)) {
 							std::cout << "  - [ID: " << std::setw(2)
 									  << comp->getId() << "] " << std::setw(15)
 									  << name << " (" << typeid(*comp).name()
 									  << ")" << std::endl;
 							found = true;
-						} else if (qLower.size() >= 2 &&
-								   lower(name).find(qLower) !=
-									   std::string::npos)
+						} else if (qNorm.size() >= 2 &&
+								   nameNorm.find(qNorm) != std::string::npos)
 							partial.push_back({comp->getId(), name});
 					}
 				}
@@ -471,7 +472,7 @@ int main() {
 						std::cout << "  No matches found." << std::endl;
 					}
 				}
-			} else if (cmd == "tree") {
+			} else if (cmdNorm == "tree") {
 				std::cout << "\n=== GRID TOPOLOGY ===" << std::endl;
 				for (const auto &sub : engine.getSubstations()) {
 					std::cout << "\n[Substation: " << sub->getName() << "]"
@@ -533,9 +534,11 @@ int main() {
 					}
 				}
 				std::cout << "\n==========================" << std::endl;
-			} else if (cmd == "list") {
+			} else if (cmdNorm == "list") {
 				std::string type;
 				ss >> type;
+				type =
+					GLStation::Util::InputHandler::normaliseForComparison(type);
 				if (type.empty()) {
 					std::cout << "Error: Missing type. Usage: list "
 								 "<gen|load|line|trafo|breaker>"
@@ -587,7 +590,7 @@ int main() {
 							std::cout << "  (none)" << std::endl;
 					}
 				}
-			} else if (cmd == "inspect") {
+			} else if (cmdNorm == "inspect") {
 				GLStation::Core::u64 id;
 				if (ss >> id) {
 					bool found = false;
@@ -636,11 +639,14 @@ int main() {
 								  << std::endl;
 				} else
 					std::cout << "Usage: inspect <id>." << std::endl;
-			} else if (cmd == "set") {
+			} else if (cmdNorm == "set") {
 				GLStation::Core::u64 id;
 				std::string param;
 				double val;
 				if (ss >> id >> param >> val) {
+					param =
+						GLStation::Util::InputHandler::normaliseForComparison(
+							param);
 					bool ok = false;
 					for (const auto &sub : engine.getSubstations()) {
 						for (const auto &comp : sub->getComponents()) {
@@ -711,7 +717,7 @@ int main() {
 				} else
 					std::cout << "Usage: set <id> <param> <value>."
 							  << std::endl;
-			} else if (cmd == "open" || cmd == "close") {
+			} else if (cmdNorm == "open" || cmdNorm == "close") {
 				GLStation::Core::u64 id;
 				if (ss >> id) {
 					bool found = false;
@@ -721,7 +727,7 @@ int main() {
 								if (auto breaker = dynamic_cast<
 										GLStation::Grid::Breaker *>(
 										comp.get())) {
-									breaker->setOpen(cmd == "open");
+									breaker->setOpen(cmdNorm == "open");
 									std::cout << "Breaker #" << id << " ("
 											  << comp->getName() << ") is now "
 											  << (breaker->isOpen() ? "OPEN"
@@ -741,15 +747,16 @@ int main() {
 				} else
 					std::cout << "Usage: open <id>  or  close <id>"
 							  << std::endl;
-			} else if (cmd == "export") {
+			} else if (cmdNorm == "export") {
 				std::string filename = "results.csv";
 				ss >> filename;
-				GLStation::Simulation::DataManager::exportToCsv(
-					filename, engine.getTickCount(), engine.getSubstations());
+				engine.exportVoltagesToCSV(filename);
 				std::cout << "Exported to " << filename << std::endl;
-			} else if (cmd == "scenario") {
+			} else if (cmdNorm == "scenario") {
 				std::string sub;
 				ss >> sub;
+				sub =
+					GLStation::Util::InputHandler::normaliseForComparison(sub);
 				if (sub == "list") {
 					auto ticks =
 						engine.getScenarioManager().getScheduledTicks();
@@ -766,6 +773,9 @@ int main() {
 					std::string type;
 					GLStation::Core::u64 tick, id;
 					ss >> type >> tick >> id;
+					type =
+						GLStation::Util::InputHandler::normaliseForComparison(
+							type);
 					if (type == "open") {
 						engine.getScenarioManager().addEvent(tick, [&engine,
 																	id]() {
@@ -856,19 +866,19 @@ int main() {
 					std::cout << "Usage: scenario list | scenario add <type> "
 								 "<tick> <id> [kW]"
 							  << std::endl;
-			} else if (cmd == "import") {
+			} else if (cmdNorm == "import") {
 				std::string cityName;
 				std::getline(ss, cityName);
-				trim(cityName);
+				cityName = GLStation::Util::InputHandler::trim(cityName);
 				if (!cityName.empty()) {
-					if (GLStation::Simulation::CityParser::importCity(
+					if (GLStation::Simulation::GridHandler::importCity(
 							cityName)) {
 						engine.initialise();
 						std::cout << "Grid loaded for: " << cityName
 								  << std::endl;
 					} else {
 						auto suggestions =
-							GLStation::Simulation::CityParser::getSuggestions(
+							GLStation::Simulation::GridHandler::getSuggestions(
 								cityName);
 						if (!suggestions.empty()) {
 							std::cout << "\nNo exact match for \"" << cityName
@@ -880,7 +890,8 @@ int main() {
 									  << ") or cancel: " << std::flush;
 							std::string choice;
 							if (std::getline(std::cin, choice)) {
-								trim(choice);
+								choice =
+									GLStation::Util::InputHandler::trim(choice);
 								size_t idx = 0;
 								try {
 									idx =
@@ -888,7 +899,7 @@ int main() {
 								} catch (...) {
 								}
 								if (idx >= 1 && idx <= suggestions.size()) {
-									if (GLStation::Simulation::CityParser::
+									if (GLStation::Simulation::GridHandler::
 											importCity(suggestions[idx - 1])) {
 										engine.initialise();
 										std::cout << "Grid loaded for: "
