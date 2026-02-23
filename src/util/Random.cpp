@@ -2,7 +2,7 @@
 
 namespace GLStation::Util {
 
-Core::u64 Random::s_state = 0xCAFEBABE12345678ULL;
+Core::u64 Random::s_state = 0xCAFEBABE90210ULL;
 
 void Random::init(Core::u64 seed) {
 	s_state = seed;
