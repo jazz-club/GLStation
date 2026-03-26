@@ -38,9 +38,10 @@ void Transformer::tick(Core::Tick) {
 	if (!m_primary || !m_secondary)
 		return;
 	std::complex<Core::f64> vpKv =
-		m_primary->getVoltage() * m_primary->getBaseVoltage();
-	std::complex<Core::f64> vsKv =
-		m_secondary->getVoltage() * m_secondary->getBaseVoltage();
+		m_primary->getVoltage() * m_primary->getBaseVoltage() / std::sqrt(3.0);
+	std::complex<Core::f64> vsKv = m_secondary->getVoltage() *
+								   m_secondary->getBaseVoltage() /
+								   std::sqrt(3.0);
 	std::complex<Core::f64> vpAdjusted = vpKv / m_tap;
 	std::complex<Core::f64> vDiff = vpAdjusted - vsKv;
 	m_currentFlow = (vDiff * 1000.0) * m_admittance;
@@ -51,7 +52,7 @@ void Transformer::tick(Core::Tick) {
 */
 Core::f64 Transformer::getLosses() const {
 	Core::f64 iMag = std::abs(m_currentFlow);
-	return iMag * iMag * m_resistance / 1000.0;
+	return 3.0 * iMag * iMag * m_resistance / 1000.0;
 }
 
 std::complex<Core::f64> Transformer::getAdmittance() const {

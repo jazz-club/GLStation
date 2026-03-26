@@ -23,7 +23,7 @@ class Line : public GridComponent {
 	void setCurrentLimit(Core::f64 limit) { m_currentLimit = limit; }
 	Core::f64 getLosses() const {
 		Core::f64 iMag = std::abs(m_currentFlow);
-		return iMag * iMag * m_resistance / 1000.0;
+		return 3.0 * iMag * iMag * m_resistance / 1000.0;
 	}
 
   private:

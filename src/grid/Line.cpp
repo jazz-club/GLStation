@@ -1,4 +1,5 @@
 #include "grid/Line.hpp"
+#include <cmath>
 #include <iomanip>
 #include <sstream>
 
@@ -30,8 +31,9 @@ void Line::tick(Core::Tick) {
 	if (!m_from || !m_to)
 		return;
 	std::complex<Core::f64> vFromKv =
-		m_from->getVoltage() * m_from->getBaseVoltage();
-	std::complex<Core::f64> vToKv = m_to->getVoltage() * m_to->getBaseVoltage();
+		m_from->getVoltage() * m_from->getBaseVoltage() / std::sqrt(3.0);
+	std::complex<Core::f64> vToKv =
+		m_to->getVoltage() * m_to->getBaseVoltage() / std::sqrt(3.0);
 	m_currentFlow = (vFromKv - vToKv) * 1000.0 * m_admittance;
 }
 
