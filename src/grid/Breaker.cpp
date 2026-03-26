@@ -1,4 +1,5 @@
 #include "grid/Breaker.hpp"
+#include "sim/PowerSolver.hpp"
 #include <sstream>
 
 /*
@@ -11,6 +12,11 @@ namespace GLStation::Grid {
 
 Breaker::Breaker(std::string name, Node *from, Node *to)
 	: GridComponent(std::move(name)), m_from(from), m_to(to), m_isOpen(false) {}
+
+void Breaker::setOpen(bool open) {
+	m_isOpen = open;
+	GLStation::Simulation::PowerSolver::invalidateYBus();
+}
 
 void Breaker::tick(Core::Tick) {}
 

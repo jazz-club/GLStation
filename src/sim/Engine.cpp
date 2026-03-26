@@ -53,6 +53,7 @@ Engine::Engine()
 	  m_totalLoad(0), m_totalLosses(0) {}
 
 void Engine::initialise() {
+	PowerSolver::invalidateYBus();
 	Util::Random::init(12345);
 	m_systemFrequency = 50.0;
 	m_substations.clear();
@@ -259,21 +260,27 @@ void Engine::tick() {
 
 	PowerSolver::solve(m_substations, SolverSettings());
 
+	for (auto &sub : m_substations) {
+		for (auto &comp : sub->getComponents()) {
+			if (auto line = dynamic_cast<Grid::Line *>(comp.get()))
+				line->tick(m_currentTick);
+			if (auto trafo = dynamic_cast<Grid::Transformer *>(comp.get()))
+				trafo->tick(m_currentTick);
+		}
+	}
+
 	m_totalGeneration = 0.0;
 	m_totalLosses = 0.0;
 	for (auto &sub : m_substations) {
 		for (auto &comp : sub->getComponents()) {
-			if (auto gen = dynamic_cast<Grid::Generator *>(comp.get())) {
-				if (gen->getMode() != Grid::GeneratorMode::Slack)
-					m_totalGeneration += gen->getActualP();
-			}
+			if (auto gen = dynamic_cast<Grid::Generator *>(comp.get()))
+				m_totalGeneration += gen->getActualP();
 			if (auto line = dynamic_cast<Grid::Line *>(comp.get()))
 				m_totalLosses += line->getLosses();
 			if (auto trafo = dynamic_cast<Grid::Transformer *>(comp.get()))
 				m_totalLosses += trafo->getLosses();
 		}
 	}
-	m_totalGeneration += m_totalLoad + m_totalLosses;
 
 	updateFrequencyDynamics();
 	applyAGC();
@@ -333,8 +340,10 @@ void Engine::processProtectionRelays() {
 				if (iMag > line->getCurrentLimit()) {
 					for (auto brk : breakers) {
 						if (!brk->isOpen() &&
-							(brk->getFromNode() == line->getFromNode() ||
-							 brk->getToNode() == line->getToNode())) {
+							((brk->getFromNode() == line->getFromNode() &&
+							  brk->getToNode() == line->getToNode()) ||
+							 (brk->getFromNode() == line->getToNode() &&
+							  brk->getToNode() == line->getFromNode()))) {
 							brk->setOpen(true);
 							std::cout << "\n[RELAY] OVERCURRENT on "
 									  << line->getName() << " (" << std::fixed

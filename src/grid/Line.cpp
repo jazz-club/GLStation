@@ -40,7 +40,7 @@ std::string Line::toString() const {
 	ss << "[Line #" << m_id << "] " << m_name << " | "
 	   << (m_from ? m_from->getName() : "None") << " -> "
 	   << (m_to ? m_to->getName() : "None") << " | I: " << std::fixed
-	   << std::setprecision(2) << std::abs(m_currentFlow) * 1000.0 << " A";
+	   << std::setprecision(2) << std::abs(m_currentFlow) << " A";
 	return ss.str();
 }
 

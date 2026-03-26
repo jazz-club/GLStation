@@ -212,7 +212,7 @@ static void printLiveDashboard(const GLStation::Simulation::Engine &engine,
 		return line;
 	};
 
-	if (moveUp)
+	if (moveUp && s_ansiEnabled)
 		std::cout << "\033[" << DASHBOARD_LINES << "A";
 
 	const std::string borderTop =
@@ -928,7 +928,7 @@ int main() {
 		}
 
 	} catch (const std::exception &e) {
-		std::cerr << "FUUUCK" << e.what() << std::endl;
+		std::cerr << "Error: " << e.what() << std::endl;
 	}
 
 	std::cout << "Exiting..." << std::endl;

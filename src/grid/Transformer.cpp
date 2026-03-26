@@ -1,4 +1,5 @@
 #include "grid/Transformer.hpp"
+#include "sim/PowerSolver.hpp"
 #include <cmath>
 #include <iomanip>
 #include <sstream>
@@ -23,6 +24,11 @@ Transformer::Transformer(std::string name, Node *primary, Node *secondary,
 	if (std::abs(z) > Core::EPSILON) {
 		m_admittance = 1.0 / z;
 	}
+}
+
+void Transformer::setTap(Core::f64 tap) {
+	m_tap = tap;
+	GLStation::Simulation::PowerSolver::invalidateYBus();
 }
 
 /*

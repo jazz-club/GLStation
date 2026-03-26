@@ -20,7 +20,7 @@ class Transformer : public GridComponent {
 	Node *getSecondaryNode() const { return m_secondary; }
 	Core::f64 getCurrentLimit() const { return m_currentLimit; }
 	void setCurrentLimit(Core::f64 limit) { m_currentLimit = limit; }
-	void setTap(Core::f64 tap) { m_tap = tap; }
+	void setTap(Core::f64 tap);
 	Core::f64 getResistance() const { return m_resistance; }
 	Core::f64 getReactance() const { return m_reactance; }
 	Core::f64 getLosses() const;

@@ -34,7 +34,11 @@ class Generator : public GridComponent {
 
 	void adjustSetpointKw(Core::f64 deltaKw) {
 		m_targetP = std::max(0.0, m_targetP + deltaKw);
+		if (m_mode != GeneratorMode::Slack)
+			m_actualP = std::max(0.0, m_actualP + deltaKw);
 	}
+
+	void setActualPowerKw(Core::f64 pKw) { m_actualP = pKw; }
 
   private:
 	Node *m_connectedNode;

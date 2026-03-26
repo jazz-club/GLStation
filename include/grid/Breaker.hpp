@@ -12,7 +12,7 @@ class Breaker : public GridComponent {
 	void tick(Core::Tick currentTick) override;
 	std::string toString() const override;
 
-	void setOpen(bool open) { m_isOpen = open; }
+	void setOpen(bool open);
 	bool isOpen() const { return m_isOpen; }
 	Node *getFromNode() const { return m_from; }
 	Node *getToNode() const { return m_to; }

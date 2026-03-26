@@ -24,21 +24,21 @@ JsonHandler::Value JsonHandler::parseValue(const std::string &json,
 		return parseString(json, pos);
 	if (isdigit(static_cast<unsigned char>(c)) || c == '-')
 		return parseNumber(json, pos);
-	if (json.substr(pos, 4) == "true") {
+	if (pos + 4 <= json.length() && json.substr(pos, 4) == "true") {
 		pos += 4;
 		Value value;
 		value.type = Value::Type::Bool;
 		value.boolean = true;
 		return value;
 	}
-	if (json.substr(pos, 5) == "false") {
+	if (pos + 5 <= json.length() && json.substr(pos, 5) == "false") {
 		pos += 5;
 		Value value;
 		value.type = Value::Type::Bool;
 		value.boolean = false;
 		return value;
 	}
-	if (json.substr(pos, 4) == "null") {
+	if (pos + 4 <= json.length() && json.substr(pos, 4) == "null") {
 		pos += 4;
 		return {};
 	}
@@ -53,17 +53,21 @@ JsonHandler::Value JsonHandler::parseObject(const std::string &json,
 	pos++;
 	while (true) {
 		skipWhitespace(json, pos);
+		if (pos >= json.length())
+			break;
 		if (json[pos] == '}') {
 			pos++;
 			break;
 		}
 		Value key = parseString(json, pos);
 		skipWhitespace(json, pos);
-		if (json[pos] != ':')
+		if (pos >= json.length() || json[pos] != ':')
 			break;
 		pos++;
 		val.object[key.str] = parseValue(json, pos);
 		skipWhitespace(json, pos);
+		if (pos >= json.length())
+			break;
 		if (json[pos] == ',')
 			pos++;
 		else if (json[pos] == '}') {
@@ -81,12 +85,16 @@ JsonHandler::Value JsonHandler::parseArray(const std::string &json,
 	pos++;
 	while (true) {
 		skipWhitespace(json, pos);
+		if (pos >= json.length())
+			break;
 		if (json[pos] == ']') {
 			pos++;
 			break;
 		}
 		val.array.push_back(parseValue(json, pos));
 		skipWhitespace(json, pos);
+		if (pos >= json.length())
+			break;
 		if (json[pos] == ',')
 			pos++;
 		else if (json[pos] == ']') {

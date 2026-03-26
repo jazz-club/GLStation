@@ -26,7 +26,8 @@ class PowerSolver {
 	static void invalidateYBus();
 
   private:
-	static bool runIteration();
+	static bool runIteration(const SolverSettings &settings);
+	static void updateSlackGeneratorPowerFromSolution();
 	static std::unique_ptr<Util::SparseMatrix<std::complex<Core::f64>>> s_yBus;
 };
 

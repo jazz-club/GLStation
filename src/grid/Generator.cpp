@@ -45,6 +45,8 @@ void Generator::applyDroopResponse(Core::f64 freqHz) {
    		actually be need to implement 3 phase generation at some point
 */
 void Generator::tick(Core::Tick) {
+	if (m_mode == GeneratorMode::Slack)
+		return;
 	m_actualP += (m_targetP - m_actualP) * 0.01;
 }
 
