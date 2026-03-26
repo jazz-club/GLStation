@@ -24,13 +24,15 @@
 #endif
 
 namespace {
-
+/*
+	god this shit is bodged, dashboard lines tie to some refresh logic tread lightly ig
+*/
 static const char *ANSI_RESET = "\033[0m";
 static const char *ANSI_GREEN = "\033[32m";
 static const char *ANSI_YELLOW = "\033[33m";
 static const char *ANSI_RED = "\033[31m";
 static const char *ANSI_CYAN = "\033[36m";
-static const int DASHBOARD_LINES = 10;
+static const int DASHBOARD_LINES = 8;
 static const int DASHBOARD_INNER_WIDTH = 53;
 
 /*
@@ -172,6 +174,9 @@ static void printLiveDashboard(const GLStation::Simulation::Engine &engine,
 							   bool moveUp, bool showProgress,
 							   GLStation::Core::u64 doneTicks,
 							   GLStation::Core::u64 totalTicks) {
+	(void)showProgress;
+	(void)doneTicks;
+	(void)totalTicks;
 	static std::deque<double> s_freqHistory;
 	const double freq = engine.getSystemFrequency();
 	s_freqHistory.push_back(freq);
@@ -340,24 +345,6 @@ static void printLiveDashboard(const GLStation::Simulation::Engine &engine,
 	l6 << " " << fMin << "-" << fMax << " Hz";
 	std::cout << "  |" << pad(l6.str()) << "|\n";
 
-	std::cout << "  |"
-			  << pad(" f " + sparkline + (sparkline.empty() ? "-" : ""))
-			  << "|\n";
-
-	if (showProgress && totalTicks > 0) {
-		int pct = static_cast<int>((doneTicks * 100) / totalTicks);
-		int filled = (pct * 18) / 100;
-		std::ostringstream l8;
-		l8 << " [";
-		for (int i = 0; i < 18; ++i)
-			l8 << (i < filled ? "#" : ".");
-		l8 << "] " << std::setw(3) << pct << "%";
-		std::cout << "  |" << pad(l8.str()) << "|\n";
-	} else if (showProgress && totalTicks == 0) {
-		std::cout << "  |" << pad(" [===  progress ===]") << "|\n";
-	} else {
-		std::cout << "  |" << std::string(DASHBOARD_INNER_WIDTH, ' ') << "|\n";
-	}
 	std::cout << "  " << borderBottom << "\n" << std::flush;
 }
 
