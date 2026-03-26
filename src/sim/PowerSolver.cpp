@@ -113,7 +113,6 @@ void PowerSolver::buildYBus(
 		auto to = line->getToNode();
 		if (!from || !to)
 			continue;
-
 		/*
 		breaker logic to deal with line overloads, 3P soon
 */
@@ -506,10 +505,6 @@ bool PowerSolver::runIteration(const SolverSettings &settings) {
 		mag_pu = std::clamp(mag_pu, 0.5, 1.5);
 		s_busNodes[i]->setVoltage(std::polar(mag_pu, angle));
 	}
-
-	/*
-	angle fixes PER node, this changes with 3P
-*/
 	for (size_t i : pv_indices) {
 		Core::f64 angle =
 			std::arg(s_busNodes[i]->getVoltage()) + dx[theta_map[i]];
@@ -519,5 +514,7 @@ bool PowerSolver::runIteration(const SolverSettings &settings) {
 
 	return false;
 }
-
+/*
+	angle fixes PER node, this changes with 3P
+*/
 } // namespace GLStation::Simulation

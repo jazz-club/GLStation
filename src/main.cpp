@@ -12,6 +12,7 @@
 #include <deque>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <sstream>
 #include <string>
@@ -87,6 +88,84 @@ static GLStation::Core::u64 parseTicksFromString(const std::string &arg) {
 	}
 	return 1;
 }
+
+/*
+	im not familiar with how CLI utilities usually do this, ill have to look at some OSS stuff
+	this works for now but it is RANCID
+*/
+static bool shouldStopRun() {
+#ifdef _WIN32
+	HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
+	if (hIn == INVALID_HANDLE_VALUE)
+		return false;
+
+	INPUT_RECORD rec;
+	DWORD n = 0;
+	if (PeekConsoleInput(hIn, &rec, 1, &n) && n > 0) {
+		if (rec.EventType == KEY_EVENT && rec.Event.KeyEvent.bKeyDown) {
+			ReadConsoleInput(hIn, &rec, 1, &n);
+			char ch = rec.Event.KeyEvent.uChar.AsciiChar;
+			return ch == 'x' || ch == 'X';
+		}
+		ReadConsoleInput(hIn, &rec, 1, &n);
+	}
+#endif
+	return false;
+}
+
+/*
+	this is intuitive  for me but theres other ways that might make more sense for some people
+	please chime in if theres a smarter way to parse time
+*/
+static bool parseRunDurationTicks(const std::string &arg,
+								  GLStation::Core::u64 &outTicks) {
+	if (arg.empty())
+		return false;
+	std::string s = arg;
+	for (char &c : s) {
+		c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+	}
+
+	long double factorMs = 1000.0L;
+	size_t suffixLen = 0;
+	if (s.size() >= 2 && s.substr(s.size() - 2) == "ms") {
+		factorMs = 1.0L;
+		suffixLen = 2;
+	} else if (!s.empty() && s.back() == 's') {
+		factorMs = 1000.0L;
+		suffixLen = 1;
+	} else if (!s.empty() && s.back() == 'm') {
+		factorMs = 60000.0L;
+		suffixLen = 1;
+	} else if (!s.empty() && s.back() == 'h') {
+		factorMs = 3600000.0L;
+		suffixLen = 1;
+	}
+
+	std::string numPart =
+		(suffixLen > 0) ? s.substr(0, s.size() - suffixLen) : s;
+	if (numPart.empty())
+		return false;
+
+	try {
+		long double value = std::stold(numPart);
+		if (!(value >= 0))
+			return false;
+		long double ms = value * factorMs;
+		if (ms < 1.0L)
+			ms = 1.0L;
+
+		outTicks = static_cast<GLStation::Core::u64>(
+			std::llround(std::min<long double>(
+				ms, static_cast<long double>(
+						std::numeric_limits<GLStation::Core::u64>::max()))));
+		return outTicks > 0;
+	} catch (...) {
+	}
+	return false;
+}
+
+static const GLStation::Core::u64 RUN_DASH_INTERVAL_TICKS = 1000;
 
 // Needs to be migrated to a module at some point
 static void printLiveDashboard(const GLStation::Simulation::Engine &engine,
@@ -275,7 +354,7 @@ static void printLiveDashboard(const GLStation::Simulation::Engine &engine,
 		l8 << "] " << std::setw(3) << pct << "%";
 		std::cout << "  |" << pad(l8.str()) << "|\n";
 	} else if (showProgress && totalTicks == 0) {
-		std::cout << "  |" << pad(" [=== cpu speed ===]") << "|\n";
+		std::cout << "  |" << pad(" [===  progress ===]") << "|\n";
 	} else {
 		std::cout << "  |" << std::string(DASHBOARD_INNER_WIDTH, ' ') << "|\n";
 	}
@@ -318,7 +397,8 @@ int main() {
 						  << "==========\n\n"
 						  << "exit\n"
 						  << "tick [count]\n"
-						  << "run [duration] [interval]\n"
+						  << "run <time>\n"
+						  << "run inf\n"
 						  << "status\n"
 						  << "find <query>\n"
 						  << "tree\n"
@@ -342,70 +422,76 @@ int main() {
 				std::cout << "Advanced " << count << " ticks (" << count
 						  << "ms sim time)." << std::endl;
 			} else if (cmdNorm == "run") {
-				std::string durStr, intStr;
-				ss >> durStr >> intStr;
-				std::string durNorm =
-					GLStation::Util::InputHandler::normaliseForComparison(
-						durStr);
-				const bool infiniteMode =
-					(durNorm == "fast" || durNorm == "inf");
-				if (infiniteMode) {
-					GLStation::Core::u64 intervalTicks = 1000;
-					if (!intStr.empty())
-						try {
-							intervalTicks = static_cast<GLStation::Core::u64>(
-								std::stoull(intStr));
-						} catch (...) {
-						}
-					if (intervalTicks < 1)
-						intervalTicks = 1;
-					enableAnsiIfPossible();
-					std::cout << "Running CPU bound max" << std::endl;
+				std::string arg;
+				std::string extra;
+				ss >> arg;
+				if (ss >> extra) {
+					std::cout << "Usage: run <time> | run inf." << std::endl;
+					continue;
+				}
+				if (arg.empty()) {
+					std::cout << "Usage: run <time> | run inf." << std::endl;
+					continue;
+				}
+
+				std::string argNorm =
+					GLStation::Util::InputHandler::normaliseForComparison(arg);
+
+				enableAnsiIfPossible();
+
+				if (argNorm == "inf") {
+					std::cout << "Run indefinitely. Press X to "
+								 "stop.\n"
+							  << std::endl;
 					bool first = true;
+					/*
+					this is safe, i think
+*/
 					for (;;) {
-						for (GLStation::Core::u64 i = 0; i < intervalTicks; ++i)
+						for (GLStation::Core::u64 i = 0;
+							 i < RUN_DASH_INTERVAL_TICKS; ++i) {
+							if (shouldStopRun())
+								goto done_inf;
 							engine.tick();
+						}
 						printLiveDashboard(engine, !first, true,
 										   engine.getTickCount(), 0);
 						first = false;
 					}
+				done_inf:
+					printLiveDashboard(engine, false, false,
+									   engine.getTickCount(), 0);
 				} else {
-					GLStation::Core::u64 durationTicks =
-						durStr.empty() ? 10000 : parseTicksFromString(durStr);
-					GLStation::Core::u64 intervalTicks = 1000;
-					if (!intStr.empty())
-						try {
-							intervalTicks = static_cast<GLStation::Core::u64>(
-								std::stoull(intStr));
-						} catch (...) {
-						}
-					if (intervalTicks < 1)
-						intervalTicks = 1;
-					enableAnsiIfPossible();
-					std::cout << "Running for" << durationTicks
-							  << " ticks, dashboard updates " << intervalTicks
-							  << "ticks.\n"
+					GLStation::Core::u64 durationTicks = 0;
+					if (!parseRunDurationTicks(arg, durationTicks)) {
+						std::cout << "Usage: run <time> | run inf."
+								  << std::endl;
+						continue;
+					}
+					std::cout << "Running for " << durationTicks
+							  << " ticks. Press X to stop.\n"
 							  << std::endl;
-					auto t0 = std::chrono::steady_clock::now();
+
+					bool first = true;
 					GLStation::Core::u64 done = 0;
 					for (; done < durationTicks;) {
-						GLStation::Core::u64 chunk =
-							(durationTicks - done > intervalTicks)
-								? intervalTicks
-								: (durationTicks - done);
-						for (GLStation::Core::u64 i = 0; i < chunk; ++i)
+						GLStation::Core::u64 chunk = std::min(
+							RUN_DASH_INTERVAL_TICKS, durationTicks - done);
+						for (GLStation::Core::u64 i = 0; i < chunk; ++i) {
+							if (shouldStopRun()) {
+								done = durationTicks;
+								break;
+							}
 							engine.tick();
-						done += chunk;
-						printLiveDashboard(engine, (done > chunk), true, done,
-										   durationTicks);
+							++done;
+						}
+						printLiveDashboard(engine, (done > 0 && !first), true,
+										   done, durationTicks);
+						first = false;
 					}
-					auto t1 = std::chrono::steady_clock::now();
-					auto ms =
-						std::chrono::duration_cast<std::chrono::milliseconds>(
-							t1 - t0)
-							.count();
-					std::cout << "\nDone. " << durationTicks << " ticks in "
-							  << ms << "ms." << std::endl;
+
+					std::cout << "\nDone. Ran " << done << " ticks."
+							  << std::endl;
 				}
 			} else if (cmdNorm == "status") {
 				std::cout << "\n--- SYSTEM OVERVIEW ---" << std::endl;
@@ -928,9 +1014,11 @@ int main() {
 		}
 
 	} catch (const std::exception &e) {
-		std::cerr << "Error: " << e.what() << std::endl;
+		std::cerr << "FUUUCK: " << e.what() << std::endl;
 	}
-
+	/*
+	^thought about changing this but never had a runtime exception so lets leave it as an easter egg
+*/
 	std::cout << "Exiting..." << std::endl;
 	return 0;
 }
