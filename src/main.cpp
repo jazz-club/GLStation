@@ -10,6 +10,7 @@
 #include <chrono>
 #include <cmath>
 #include <deque>
+#include <filesystem>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -21,18 +22,22 @@
 #include <vector>
 #ifdef _WIN32
 #include <windows.h>
+#else
+#include <cerrno>
+#include <fcntl.h>
+#include <sys/select.h>
+#include <termios.h>
+#include <unistd.h>
 #endif
 
 namespace {
-/*
-	god this shit is bodged, dashboard lines tie to some refresh logic tread lightly ig
-*/
+
 static const char *ANSI_RESET = "\033[0m";
 static const char *ANSI_GREEN = "\033[32m";
 static const char *ANSI_YELLOW = "\033[33m";
 static const char *ANSI_RED = "\033[31m";
 static const char *ANSI_CYAN = "\033[36m";
-static const int DASHBOARD_LINES = 8;
+static const int DASHBOARD_LINES = 10;
 static const int DASHBOARD_INNER_WIDTH = 53;
 
 /*
@@ -73,6 +78,46 @@ static void enableAnsiIfPossible() {
 #endif
 }
 
+struct ScopedRawStdin {
+#ifndef _WIN32
+	bool active = false;
+	bool isTty = false;
+	int oldFlags = -1;
+	termios oldTio{};
+
+	ScopedRawStdin() {
+		isTty = ::isatty(STDIN_FILENO) == 1;
+		if (!isTty)
+			return;
+
+		if (::tcgetattr(STDIN_FILENO, &oldTio) != 0)
+			return;
+
+		termios rawTio = oldTio;
+		rawTio.c_lflag &= static_cast<unsigned long>(~(ICANON | ECHO));
+		rawTio.c_cc[VMIN] = 0;
+		rawTio.c_cc[VTIME] = 0;
+
+		if (::tcsetattr(STDIN_FILENO, TCSANOW, &rawTio) != 0)
+			return;
+
+		oldFlags = ::fcntl(STDIN_FILENO, F_GETFL, 0);
+		if (oldFlags != -1)
+			(void)::fcntl(STDIN_FILENO, F_SETFL, oldFlags | O_NONBLOCK);
+
+		active = true;
+	}
+
+	~ScopedRawStdin() {
+		if (!active)
+			return;
+		(void)::tcsetattr(STDIN_FILENO, TCSANOW, &oldTio);
+		if (oldFlags != -1)
+			(void)::fcntl(STDIN_FILENO, F_SETFL, oldFlags);
+	}
+#endif
+};
+
 static GLStation::Core::u64 parseTicksFromString(const std::string &arg) {
 	if (arg.empty())
 		return 1;
@@ -111,6 +156,28 @@ static bool shouldStopRun() {
 		}
 		ReadConsoleInput(hIn, &rec, 1, &n);
 	}
+#else
+	if (::isatty(STDIN_FILENO) != 1)
+		return false;
+
+	fd_set rfds;
+	FD_ZERO(&rfds);
+	FD_SET(STDIN_FILENO, &rfds);
+	timeval tv;
+	tv.tv_sec = 0;
+	tv.tv_usec = 0;
+
+	int ready = ::select(STDIN_FILENO + 1, &rfds, nullptr, nullptr, &tv);
+	if (ready <= 0)
+		return false;
+
+	unsigned char ch = 0;
+	ssize_t n = ::read(STDIN_FILENO, &ch, 1);
+	if (n == 1)
+		return ch == 'x' || ch == 'X';
+	if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+		return false;
+	return false;
 #endif
 	return false;
 }
@@ -345,6 +412,27 @@ static void printLiveDashboard(const GLStation::Simulation::Engine &engine,
 	l6 << " " << fMin << "-" << fMax << " Hz";
 	std::cout << "  |" << pad(l6.str()) << "|\n";
 
+	std::ostringstream l7;
+	l7 << " Nadir " << std::fixed << std::setprecision(2)
+	   << engine.getFrequencyNadir() << " Hz  Max line " << std::setprecision(0)
+	   << engine.getMaxObservedLineLoadingPercent() << "%  Shed "
+	   << std::setprecision(1) << engine.getActiveShedLoadKw() << " kW";
+	std::cout << "  |" << pad(l7.str()) << "|\n";
+
+	std::string lastEvent = engine.getLastEvent();
+	const int maxEventLen = DASHBOARD_INNER_WIDTH - 7;
+	if (static_cast<int>(lastEvent.size()) > maxEventLen) {
+		if (maxEventLen > 3)
+			lastEvent =
+				lastEvent.substr(0, static_cast<size_t>(maxEventLen - 3)) +
+				"...";
+		else
+			lastEvent = lastEvent.substr(0, static_cast<size_t>(maxEventLen));
+	}
+	std::ostringstream l8;
+	l8 << " Last: " << lastEvent;
+	std::cout << "  |" << pad(l8.str()) << "|\n";
+
 	std::cout << "  " << borderBottom << "\n" << std::flush;
 }
 
@@ -399,6 +487,7 @@ int main() {
 						  << "scenario add <open|close|set_load|set_gen> "
 							 "<tick> <id> [kW]\n"
 						  << "import <name>\n"
+						  << "import demo\n"
 						  << std::endl;
 			} else if (cmdNorm == "tick") {
 				std::string arg;
@@ -430,6 +519,8 @@ int main() {
 					std::cout << "Run indefinitely. Press X to "
 								 "stop.\n"
 							  << std::endl;
+					ScopedRawStdin rawInput;
+					(void)rawInput;
 					bool first = true;
 					/*
 					this is safe, i think
@@ -459,6 +550,8 @@ int main() {
 							  << " ticks. Press X to stop.\n"
 							  << std::endl;
 
+					ScopedRawStdin rawInput;
+					(void)rawInput;
 					bool first = true;
 					GLStation::Core::u64 done = 0;
 					for (; done < durationTicks;) {
@@ -501,6 +594,15 @@ int main() {
 						  << (engine.getTotalGeneration() -
 							  engine.getTotalLoad() - engine.getTotalLosses())
 						  << " kW" << std::endl;
+				std::cout << "Freq Nadir:  " << std::setw(8)
+						  << engine.getFrequencyNadir() << " Hz" << std::endl;
+				std::cout << "Max line:    " << std::setw(8)
+						  << engine.getMaxObservedLineLoadingPercent() << " %"
+						  << std::endl;
+				std::cout << "Shed load:   " << std::setw(8)
+						  << engine.getActiveShedLoadKw() << " kW" << std::endl;
+				std::cout << "Reserve:     " << std::setw(8)
+						  << engine.getReserveMarginKw() << " kW" << std::endl;
 				std::cout << "-----------------------" << std::endl;
 				for (const auto &sub : engine.getSubstations()) {
 					std::cout << sub->toString() << std::endl;
@@ -944,6 +1046,17 @@ int main() {
 				std::getline(ss, cityName);
 				cityName = GLStation::Util::InputHandler::trim(cityName);
 				if (!cityName.empty()) {
+					std::string cityNorm =
+						GLStation::Util::InputHandler::normaliseForComparison(
+							cityName);
+					if (cityNorm == "demo") {
+						std::error_code ec;
+						(void)std::filesystem::remove("grid.csv", ec);
+						engine.initialise();
+						std::cout << "Demo grid loaded." << std::endl;
+						continue;
+					}
+
 					if (GLStation::Simulation::GridHandler::importCity(
 							cityName)) {
 						engine.initialise();
@@ -992,7 +1105,8 @@ int main() {
 						}
 					}
 				} else {
-					std::cout << "Usage: import [Name]" << std::endl;
+					std::cout << "Usage: import <name> | import demo"
+							  << std::endl;
 				}
 			} else {
 				std::cout << "Error: Unknown Command '" << cmd << "'."

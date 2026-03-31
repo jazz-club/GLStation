@@ -1,4 +1,5 @@
 #include "grid/Generator.hpp"
+#include "util/Random.hpp"
 #include <algorithm>
 #include <iomanip>
 #include <sstream>
@@ -13,9 +14,10 @@ namespace GLStation::Grid {
 
 Generator::Generator(std::string name, Node *connectedNode, GeneratorMode mode)
 	: GridComponent(std::move(name)), m_connectedNode(connectedNode),
-	  m_mode(mode), m_targetP(0.0), m_actualP(0.0), m_targetV(1.0),
-	  m_minQ(-9999.0), m_maxQ(9999.0), m_droop(20.0), m_inertia(5.0),
-	  m_maxRampRate(500.0) {}
+	  m_mode(mode), m_profile(GeneratorProfile::Manual), m_targetP(0.0),
+	  m_actualP(0.0), m_targetV(1.0), m_minQ(-9999.0), m_maxQ(9999.0),
+	  m_minP(0.0), m_maxP(200000.0), m_droop(20.0), m_inertia(5.0),
+	  m_maxRampRate(500.0), m_profileStrength(1.0) {}
 
 /*
         default frequency set to 50 for now, i dont know enough about
@@ -32,11 +34,11 @@ void Generator::applyDroopResponse(Core::f64 freqHz) {
 		return;
 	Core::f64 df = freqHz - 50.0;
 	Core::f64 dP = -m_droop * 1000.0 * df;
-	Core::f64 desired = m_targetP + dP;
+	Core::f64 desired = std::clamp(m_targetP + dP, m_minP, m_maxP);
 	Core::f64 maxDelta = m_maxRampRate;
 	Core::f64 rawDelta = desired - m_actualP;
 	Core::f64 clampedDelta = std::clamp(rawDelta, -maxDelta, maxDelta);
-	m_actualP = std::clamp(m_actualP + clampedDelta, 0.0, m_targetP * 1.1);
+	m_actualP = std::clamp(m_actualP + clampedDelta, m_minP, m_maxP);
 }
 
 /*
@@ -47,7 +49,30 @@ void Generator::applyDroopResponse(Core::f64 freqHz) {
 void Generator::tick(Core::Tick) {
 	if (m_mode == GeneratorMode::Slack)
 		return;
-	m_actualP += (m_targetP - m_actualP) * 0.01;
+	/*
+	refer to Generator.hpp
+*/
+	Core::f64 profileScale = 1.0;
+	if (m_profile == GeneratorProfile::Wind)
+		profileScale =
+			0.70 + Util::Random::range(-0.25, 0.25) * m_profileStrength;
+	else if (m_profile == GeneratorProfile::Solar)
+		profileScale =
+			0.78 + Util::Random::range(-0.20, 0.20) * m_profileStrength;
+	else if (m_profile == GeneratorProfile::Hydro)
+		profileScale =
+			0.92 + Util::Random::range(-0.05, 0.06) * m_profileStrength;
+	else if (m_profile == GeneratorProfile::Thermal)
+		profileScale =
+			1.00 + Util::Random::range(-0.02, 0.03) * m_profileStrength;
+	profileScale = std::clamp(profileScale, 0.2, 1.25);
+
+	Core::f64 profiledTarget =
+		std::clamp(m_targetP * profileScale, m_minP, m_maxP);
+	Core::f64 rawDelta = profiledTarget - m_actualP;
+	Core::f64 clampedDelta =
+		std::clamp(rawDelta, -m_maxRampRate, m_maxRampRate);
+	m_actualP = std::clamp(m_actualP + clampedDelta, m_minP, m_maxP);
 }
 
 /*

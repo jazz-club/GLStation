@@ -5,6 +5,8 @@
 
 namespace GLStation::Grid {
 
+enum class LoadProfile { Flat, Residential, Commercial, Industrial };
+
 class Load : public GridComponent {
   public:
 	Load(std::string name, Node *connectedNode, Core::f64 maxPowerKw);
@@ -18,6 +20,11 @@ class Load : public GridComponent {
 
 	void setMaxPower(Core::f64 pKw) { m_maxPowerKw = pKw; }
 	Core::f64 getMaxPower() const { return m_maxPowerKw; }
+	void setProfile(LoadProfile profile) { m_profile = profile; }
+	LoadProfile getProfile() const { return m_profile; }
+	void setProfileStrength(Core::f64 strength) {
+		m_profileStrength = strength;
+	}
 
 	void shed() { m_isShed = true; }
 	void restore() { m_isShed = false; }
@@ -31,6 +38,8 @@ class Load : public GridComponent {
 	Core::f64 m_currentPowerKw;
 	Core::f64 m_powerFactor;
 	bool m_isShed;
+	LoadProfile m_profile;
+	Core::f64 m_profileStrength;
 };
 
 } // namespace GLStation::Grid

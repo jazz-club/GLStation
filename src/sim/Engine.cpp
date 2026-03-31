@@ -12,6 +12,7 @@
 #include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <map>
 #include <sstream>
@@ -50,7 +51,9 @@ struct GridLoadingContext {
 
 Engine::Engine()
 	: m_currentTick(0), m_systemFrequency(50.0), m_totalGeneration(0),
-	  m_totalLoad(0), m_totalLosses(0) {}
+	  m_totalLoad(0), m_totalLosses(0), m_frequencyNadir(50.0),
+	  m_maxObservedLineLoadingPercent(0.0), m_activeShedLoadKw(0.0),
+	  m_reserveMarginKw(0.0) {}
 
 void Engine::initialise() {
 	PowerSolver::invalidateYBus();
@@ -58,6 +61,13 @@ void Engine::initialise() {
 	m_systemFrequency = 50.0;
 	m_substations.clear();
 	m_currentTick = 0;
+	m_eventLog.clear();
+	m_pendingTrips.clear();
+	m_recloseAtTick.clear();
+	m_frequencyNadir = 50.0;
+	m_maxObservedLineLoadingPercent = 0.0;
+	m_activeShedLoadKw = 0.0;
+	m_reserveMarginKw = 0.0;
 
 	for (auto &s : s_uflsStages)
 		s.triggered = false;
@@ -85,7 +95,8 @@ void Engine::initialise() {
 					continue;
 				std::string type = f[0];
 				for (auto &c : type)
-					c = std::toupper(c);
+					c = static_cast<char>(
+						std::toupper(static_cast<unsigned char>(c)));
 
 				if (type == "SUBSTATION") {
 					std::string subName =
@@ -125,7 +136,8 @@ void Engine::initialise() {
 					Core::f64 p = std::stod(f[4]), v = std::stod(f[5]),
 							  qmin = std::stod(f[6]), qmax = std::stod(f[7]);
 					for (auto &c : modeStr)
-						c = std::tolower(c);
+						c = static_cast<char>(
+							std::tolower(static_cast<unsigned char>(c)));
 					if (ctx.nodes.count(node)) {
 						Grid::GeneratorMode mode = Grid::GeneratorMode::PQ;
 						if (modeStr == "slack")
@@ -161,6 +173,7 @@ void Engine::initialise() {
 		}
 	} else {
 		createDemoGrid();
+		configureDemoProfiles();
 	}
 	std::cout << "Grid initialised." << std::endl;
 }
@@ -170,65 +183,112 @@ void Engine::initialise() {
 		and demos we cant really get over at the moment
 */
 void Engine::createDemoGrid() {
-	auto sub = std::make_shared<Grid::Substation>("Demo");
+	auto north = std::make_shared<Grid::Substation>("North220kV");
+	auto central = std::make_shared<Grid::Substation>("Central110kV");
+	auto south = std::make_shared<Grid::Substation>("South110kV");
 
-	auto bus1 = std::make_shared<Grid::Node>("Bus1", 110.0);
-	auto bus2 = std::make_shared<Grid::Node>("Bus2", 110.0);
-	auto bus3 = std::make_shared<Grid::Node>("Bus3", 110.0);
-	auto bus4 = std::make_shared<Grid::Node>("Bus4", 110.0);
+	auto nGrid = std::make_shared<Grid::Node>("N_Grid", 220.0);
+	auto nEast = std::make_shared<Grid::Node>("N_East", 220.0);
+	auto cHub = std::make_shared<Grid::Node>("C_Hub", 110.0);
+	auto cWest = std::make_shared<Grid::Node>("C_West", 110.0);
+	auto sHub = std::make_shared<Grid::Node>("S_Hub", 110.0);
+	auto sPort = std::make_shared<Grid::Node>("S_Port", 110.0);
 
-	auto slack = std::make_shared<Grid::Generator>("SlackGen", bus1.get(),
+	auto slack = std::make_shared<Grid::Generator>("NorthThermal", nGrid.get(),
 												   Grid::GeneratorMode::Slack);
-	slack->setTargetV(1.05);
+	slack->setTargetV(1.03);
+	slack->setPowerBounds(30000.0, 160000.0);
 
-	auto pv = std::make_shared<Grid::Generator>("RegenFarm", bus2.get(),
-												Grid::GeneratorMode::PV);
-	pv->setTargetP(30000.0);
-	pv->setTargetV(1.02);
-
-	auto solar = std::make_shared<Grid::Generator>("SolarFarm", bus4.get(),
+	auto hydro = std::make_shared<Grid::Generator>("RiverHydro", cHub.get(),
 												   Grid::GeneratorMode::PV);
-	solar->setTargetP(25000.0);
-	solar->setTargetV(1.02);
-
-	auto hydro = std::make_shared<Grid::Generator>("HydroPlant", bus3.get(),
-												   Grid::GeneratorMode::PV);
-	hydro->setTargetP(20000.0);
+	hydro->setTargetP(45000.0);
 	hydro->setTargetV(1.01);
+	hydro->setPowerBounds(20000.0, 70000.0);
 
-	auto line1 =
-		std::make_shared<Grid::Line>("L1", bus1.get(), bus2.get(), 2.0, 8.0);
-	auto line2 =
-		std::make_shared<Grid::Line>("L2", bus2.get(), bus3.get(), 2.0, 8.0);
-	auto line3 =
-		std::make_shared<Grid::Line>("L3", bus3.get(), bus4.get(), 2.0, 8.0);
+	auto wind = std::make_shared<Grid::Generator>("CoastalWind", sPort.get(),
+												  Grid::GeneratorMode::PV);
+	wind->setTargetP(30000.0);
+	wind->setTargetV(1.00);
+	wind->setPowerBounds(5000.0, 50000.0);
 
-	auto load2 =
-		std::make_shared<Grid::Load>("CityCentre", bus2.get(), 20000.0);
-	auto load3 =
-		std::make_shared<Grid::Load>("IndustrialZone", bus3.get(), 35000.0);
-	auto load4_residential =
-		std::make_shared<Grid::Load>("ResidentialZone", bus4.get(), 18000.0);
-	auto load3_commercial =
-		std::make_shared<Grid::Load>("CommercialDistrict", bus3.get(), 15000.0);
+	auto solar = std::make_shared<Grid::Generator>("CentralSolar", cWest.get(),
+												   Grid::GeneratorMode::PV);
+	solar->setTargetP(22000.0);
+	solar->setTargetV(1.01);
+	solar->setPowerBounds(2000.0, 32000.0);
 
-	sub->addComponent(bus1);
-	sub->addComponent(bus2);
-	sub->addComponent(bus3);
-	sub->addComponent(bus4);
-	sub->addComponent(slack);
-	sub->addComponent(pv);
-	sub->addComponent(solar);
-	sub->addComponent(hydro);
-	sub->addComponent(line1);
-	sub->addComponent(line2);
-	sub->addComponent(line3);
-	sub->addComponent(load2);
-	sub->addComponent(load3);
-	sub->addComponent(load4_residential);
-	sub->addComponent(load3_commercial);
+	auto lNE = std::make_shared<Grid::Line>("L_NE_220", nGrid.get(),
+											nEast.get(), 1.2, 7.0);
+	auto lNC = std::make_shared<Grid::Line>("L_NC_220_110", nEast.get(),
+											cHub.get(), 1.8, 8.5);
+	auto lCS = std::make_shared<Grid::Line>("L_CS_110", cHub.get(), sHub.get(),
+											2.3, 10.5);
+	auto lCW = std::make_shared<Grid::Line>("L_CW_110", cHub.get(), cWest.get(),
+											1.9, 8.0);
+	auto lSP = std::make_shared<Grid::Line>("L_SP_110", sHub.get(), sPort.get(),
+											1.5, 7.0);
+	auto tie = std::make_shared<Grid::Line>("L_TIE_110", cWest.get(),
+											sHub.get(), 2.8, 11.0);
 
-	m_substations.push_back(sub);
+	lNE->setCurrentLimit(1200.0);
+	lNC->setCurrentLimit(900.0);
+	lCS->setCurrentLimit(750.0);
+	lCW->setCurrentLimit(650.0);
+	lSP->setCurrentLimit(600.0);
+	tie->setCurrentLimit(450.0);
+
+	auto trNorth = std::make_shared<Grid::Transformer>(
+		"T_North220_110", nEast.get(), cHub.get(), 0.8, 6.5, 1.00);
+	auto trSouth = std::make_shared<Grid::Transformer>(
+		"T_South220_110", nGrid.get(), sHub.get(), 0.9, 6.8, 0.98);
+	trNorth->setCurrentLimit(1000.0);
+	trSouth->setCurrentLimit(950.0);
+
+	auto brTie =
+		std::make_shared<Grid::Breaker>("BR_TIE", cWest.get(), sHub.get());
+	auto brCS =
+		std::make_shared<Grid::Breaker>("BR_CS", cHub.get(), sHub.get());
+
+	auto cRes =
+		std::make_shared<Grid::Load>("MetroResidential", cHub.get(), 32000.0);
+	auto cCom =
+		std::make_shared<Grid::Load>("MetroCommercial", cWest.get(), 28000.0);
+	auto sRes =
+		std::make_shared<Grid::Load>("SouthResidential", sHub.get(), 26000.0);
+	auto sInd =
+		std::make_shared<Grid::Load>("PortIndustrial", sPort.get(), 78000.0);
+
+	north->addComponent(nGrid);
+	north->addComponent(nEast);
+	north->addComponent(slack);
+	north->addComponent(lNE);
+	north->addComponent(lNC);
+	north->addComponent(trNorth);
+	north->addComponent(trSouth);
+
+	central->addComponent(cHub);
+	central->addComponent(cWest);
+	central->addComponent(hydro);
+	central->addComponent(solar);
+	central->addComponent(lCS);
+	central->addComponent(lCW);
+	central->addComponent(tie);
+	central->addComponent(brTie);
+	central->addComponent(brCS);
+	central->addComponent(cRes);
+	central->addComponent(cCom);
+
+	south->addComponent(sHub);
+	south->addComponent(sPort);
+	south->addComponent(wind);
+	south->addComponent(lSP);
+	south->addComponent(sRes);
+	south->addComponent(sInd);
+
+	m_substations.push_back(north);
+	m_substations.push_back(central);
+	m_substations.push_back(south);
+	logEvent("Demo grid loaded: 3 substations, 6 lines, 2 transformers.");
 }
 
 /*
@@ -282,9 +342,11 @@ void Engine::tick() {
 		}
 	}
 
+	updateKpis();
 	updateFrequencyDynamics();
 	applyAGC();
 	processProtectionRelays();
+	updateKpis();
 }
 
 /*
@@ -309,9 +371,9 @@ void Engine::updateFrequencyDynamics() {
 */
 void Engine::applyAGC() {
 	Core::f64 df = m_systemFrequency - 50.0;
-	if (std::abs(df) < 0.005)
+	if (std::abs(df) < 0.01)
 		return;
-	Core::f64 correction = -df * 500.0;
+	Core::f64 correction = std::clamp(-df * 320.0, -180.0, 180.0);
 	for (auto &sub : m_substations) {
 		for (auto &comp : sub->getComponents()) {
 			if (auto gen = dynamic_cast<Grid::Generator *>(comp.get())) {
@@ -327,35 +389,88 @@ void Engine::applyAGC() {
 		redundant until scenario manager gets somewhere but breaker logic
 */
 void Engine::processProtectionRelays() {
-	for (auto &sub : m_substations) {
-		std::vector<Grid::Breaker *> breakers;
-		for (auto &comp : sub->getComponents()) {
-			if (auto brk = dynamic_cast<Grid::Breaker *>(comp.get()))
-				breakers.push_back(brk);
-		}
+	std::map<Core::u64, Grid::Breaker *> breakerById;
+	std::map<std::string, Grid::Breaker *> breakerByEdge;
+	auto edgeKey = [](Grid::Node *a, Grid::Node *b) -> std::string {
+		Core::u64 idA = a ? a->getId() : 0;
+		Core::u64 idB = b ? b->getId() : 0;
+		if (idA > idB)
+			std::swap(idA, idB);
+		return std::to_string(idA) + "-" + std::to_string(idB);
+	};
 
+	for (auto &sub : m_substations) {
+		for (auto &comp : sub->getComponents()) {
+			if (auto brk = dynamic_cast<Grid::Breaker *>(comp.get())) {
+				breakerById[brk->getId()] = brk;
+				breakerByEdge[edgeKey(brk->getFromNode(), brk->getToNode())] =
+					brk;
+			}
+		}
+	}
+
+	for (auto &[id, recloseTick] : m_recloseAtTick) {
+		if (recloseTick <= m_currentTick && breakerById.contains(id)) {
+			Grid::Breaker *brk = breakerById[id];
+			if (brk->isOpen()) {
+				brk->setOpen(false);
+				logEvent("[RELAY] Auto-reclosed breaker " + brk->getName());
+			}
+		}
+	}
+	for (auto it = m_recloseAtTick.begin(); it != m_recloseAtTick.end();) {
+		if (it->second <= m_currentTick)
+			it = m_recloseAtTick.erase(it);
+		else
+			++it;
+	}
+
+	for (auto &sub : m_substations) {
 		for (auto &comp : sub->getComponents()) {
 			if (auto line = dynamic_cast<Grid::Line *>(comp.get())) {
 				Core::f64 iMag = std::abs(line->getCurrentFlow());
+				Core::f64 loadingPct =
+					100.0 * iMag /
+					std::max<Core::f64>(1.0, line->getCurrentLimit());
+				m_maxObservedLineLoadingPercent =
+					std::max(m_maxObservedLineLoadingPercent, loadingPct);
+
+				std::string key =
+					edgeKey(line->getFromNode(), line->getToNode());
+				if (!breakerByEdge.contains(key))
+					continue;
+				Grid::Breaker *brk = breakerByEdge[key];
+
 				if (iMag > line->getCurrentLimit()) {
-					for (auto brk : breakers) {
-						if (!brk->isOpen() &&
-							((brk->getFromNode() == line->getFromNode() &&
-							  brk->getToNode() == line->getToNode()) ||
-							 (brk->getFromNode() == line->getToNode() &&
-							  brk->getToNode() == line->getFromNode()))) {
-							brk->setOpen(true);
-							std::cout << "\n[RELAY] OVERCURRENT on "
-									  << line->getName() << " (" << std::fixed
-									  << std::setprecision(1) << iMag << " A > "
-									  << line->getCurrentLimit()
-									  << "A limit). Tripping breaker: "
-									  << brk->getName() << "\n";
-							break;
-						}
+					if (!m_pendingTrips.contains(brk->getId())) {
+						m_pendingTrips[brk->getId()] = m_currentTick + 120;
+						std::ostringstream os;
+						os << "[RELAY] " << line->getName() << " overload ("
+						   << std::fixed << std::setprecision(1) << loadingPct
+						   << "%), trip timer started";
+						logEvent(os.str());
 					}
+				} else {
+					m_pendingTrips.erase(brk->getId());
 				}
 			}
+		}
+	}
+
+	for (auto it = m_pendingTrips.begin(); it != m_pendingTrips.end();) {
+		Core::u64 breakerId = it->first;
+		Core::u64 tripAt = it->second;
+		if (tripAt <= m_currentTick && breakerById.contains(breakerId)) {
+			Grid::Breaker *brk = breakerById[breakerId];
+			if (!brk->isOpen()) {
+				brk->setOpen(true);
+				m_recloseAtTick[breakerId] = m_currentTick + 1500;
+				logEvent("[RELAY] Tripped " + brk->getName() +
+						 ", auto-reclose armed");
+			}
+			it = m_pendingTrips.erase(it);
+		} else {
+			++it;
 		}
 	}
 
@@ -370,34 +485,40 @@ void Engine::processProtectionRelays() {
 						if (!load->isShed())
 							activLoads.push_back(load);
 
-			size_t nShed =
-				static_cast<size_t>(activLoads.size() * stage.shedFraction);
+			size_t nShed = static_cast<size_t>(
+				static_cast<Core::f64>(activLoads.size()) * stage.shedFraction);
 			std::sort(activLoads.begin(), activLoads.end(),
 					  [](auto *a, auto *b) {
 						  return a->getCurrentConsumption() >
 								 b->getCurrentConsumption();
 					  });
 
-			std::cout << "\n[UFLS] Frequency " << std::fixed
-					  << std::setprecision(2) << m_systemFrequency
-					  << " Hz <= " << stage.freqThresholdHz << " Hz. Shedding "
-					  << nShed << " loads.\n";
+			std::ostringstream os;
+			os << "[UFLS] " << std::fixed << std::setprecision(2)
+			   << m_systemFrequency << " Hz <= " << stage.freqThresholdHz
+			   << " Hz. Shedding " << nShed << " loads.";
+			logEvent(os.str());
 
 			for (size_t i = 0; i < nShed && i < activLoads.size(); ++i)
 				activLoads[i]->shed();
 		}
 
 		if (stage.triggered &&
-			m_systemFrequency > stage.freqThresholdHz + 0.3) {
+			m_systemFrequency > stage.freqThresholdHz + 0.6) {
 			stage.triggered = false;
-			for (auto &sub : m_substations)
-				for (auto &comp : sub->getComponents())
-					if (auto load = dynamic_cast<Grid::Load *>(comp.get()))
-						load->restore();
-			std::cout << "\n[UFLS] Frequency recovered to " << std::fixed
-					  << std::setprecision(2) << m_systemFrequency
-					  << " Hz. Restoring loads at stage "
-					  << stage.freqThresholdHz << " Hz.\n";
+			size_t restored = 0;
+			for (auto &sub : m_substations) {
+				for (auto &comp : sub->getComponents()) {
+					if (auto load = dynamic_cast<Grid::Load *>(comp.get())) {
+						if (load->isShed() && restored < 2) {
+							load->restore();
+							++restored;
+						}
+					}
+				}
+			}
+			if (restored > 0)
+				logEvent("[UFLS] Frequency recovered, restoring staged load.");
 		}
 	}
 }
@@ -455,7 +576,9 @@ void Engine::exportVoltagesToCSV(const std::string &filename) {
 
 	if (needsHeader) {
 		Util::CSVHandler::writeRow(
-			file, {"Tick", "Substation", "Node", "Voltage_Mag", "Voltage_Ang"});
+			file, {"Tick", "Substation", "Node", "Voltage_Mag", "Voltage_Ang",
+				   "Frequency_Hz", "ActiveShed_kW", "MaxLineLoadPct",
+				   "ReserveMargin_kW"});
 	}
 
 	for (const auto &sub : m_substations) {
@@ -465,10 +588,129 @@ void Engine::exportVoltagesToCSV(const std::string &filename) {
 				Util::CSVHandler::writeRow(
 					file, {std::to_string(m_currentTick), sub->getName(),
 						   node->getName(), std::to_string(std::abs(voltage)),
-						   std::to_string(std::arg(voltage))});
+						   std::to_string(std::arg(voltage)),
+						   std::to_string(m_systemFrequency),
+						   std::to_string(m_activeShedLoadKw),
+						   std::to_string(m_maxObservedLineLoadingPercent),
+						   std::to_string(m_reserveMarginKw)});
 			}
 		}
 	}
+}
+
+void Engine::configureDemoProfiles() {
+	for (auto &sub : m_substations) {
+		for (auto &comp : sub->getComponents()) {
+			if (auto load = dynamic_cast<Grid::Load *>(comp.get())) {
+				const std::string n = load->getName();
+				if (n.find("Residential") != std::string::npos)
+					load->setProfile(Grid::LoadProfile::Residential);
+				else if (n.find("Commercial") != std::string::npos)
+					load->setProfile(Grid::LoadProfile::Commercial);
+				else if (n.find("Industrial") != std::string::npos)
+					load->setProfile(Grid::LoadProfile::Industrial);
+				else
+					load->setProfile(Grid::LoadProfile::Flat);
+			}
+			if (auto gen = dynamic_cast<Grid::Generator *>(comp.get())) {
+				const std::string n = gen->getName();
+				if (n.find("Wind") != std::string::npos)
+					gen->setProfile(Grid::GeneratorProfile::Wind);
+				else if (n.find("Solar") != std::string::npos)
+					gen->setProfile(Grid::GeneratorProfile::Solar);
+				else if (n.find("Hydro") != std::string::npos)
+					gen->setProfile(Grid::GeneratorProfile::Hydro);
+				else
+					gen->setProfile(Grid::GeneratorProfile::Thermal);
+			}
+		}
+	}
+}
+
+void Engine::logEvent(const std::string &event) {
+	std::ostringstream os;
+	os << "T+" << m_currentTick << "ms " << event;
+	m_eventLog.push_back(os.str());
+	if (m_eventLog.size() > 24)
+		m_eventLog.pop_front();
+	appendEventToCsv(m_currentTick, event);
+}
+
+void Engine::appendEventToCsv(Core::Tick tick, const std::string &event) {
+	static const std::string kEventCsv = "event_log.csv";
+	bool needsHeader = false;
+	{
+		std::ifstream probe(kEventCsv);
+		needsHeader =
+			!probe.good() || probe.peek() == std::ifstream::traits_type::eof();
+	}
+
+	std::ofstream file(kEventCsv, std::ios::app);
+	if (!file.is_open())
+		return;
+
+	if (needsHeader)
+		Util::CSVHandler::writeRow(file, {"Tick", "Event"});
+	Util::CSVHandler::writeRow(file, {std::to_string(tick), event});
+}
+
+std::string Engine::getLastEvent() const {
+	if (m_eventLog.empty())
+		return "none";
+	return m_eventLog.back();
+}
+
+void Engine::updateKpis() {
+	m_frequencyNadir = std::min(m_frequencyNadir, m_systemFrequency);
+	m_activeShedLoadKw = 0.0;
+	m_reserveMarginKw = 0.0;
+
+	for (auto &sub : m_substations) {
+		for (auto &comp : sub->getComponents()) {
+			if (auto load = dynamic_cast<Grid::Load *>(comp.get())) {
+				if (load->isShed())
+					m_activeShedLoadKw += load->getMaxPower();
+			}
+			if (auto gen = dynamic_cast<Grid::Generator *>(comp.get())) {
+				if (gen->getMode() != Grid::GeneratorMode::Slack)
+					m_reserveMarginKw += std::max<Core::f64>(
+						0.0, gen->getMaxPower() - gen->getActualP());
+			}
+		}
+	}
+}
+
+std::vector<std::string> Engine::getDemoScenarioNames() const { return {}; }
+
+bool Engine::runDemoScenario(const std::string &name) {
+	const std::string key = name;
+	(void)key;
+	return false;
+}
+
+void Engine::clearScheduledEvents() { m_scenarioManager.clear(); }
+
+void Engine::clearEventLog() { m_eventLog.clear(); }
+
+bool Engine::runDeterministicDemoValidation(std::string &report) {
+	initialise();
+	clearScheduledEvents();
+	clearEventLog();
+	for (int i = 0; i < 6000; ++i)
+		tick();
+
+	bool okFreq = (m_frequencyNadir >= 47.0 && m_systemFrequency <= 52.0);
+	bool okLoad = (m_totalLoad >= 0.0);
+	bool ok = okFreq && okLoad;
+
+	std::ostringstream os;
+	os << "Validation " << (ok ? "PASS" : "FAIL") << " | nadir=" << std::fixed
+	   << std::setprecision(2) << m_frequencyNadir
+	   << "Hz, f_now=" << m_systemFrequency
+	   << "Hz, maxLine=" << m_maxObservedLineLoadingPercent
+	   << "%, events=" << m_eventLog.size();
+	report = os.str();
+	return ok;
 }
 
 /*

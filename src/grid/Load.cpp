@@ -17,7 +17,7 @@ namespace GLStation::Grid {
 Load::Load(std::string name, Node *connectedNode, Core::f64 maxPowerKw)
 	: GridComponent(std::move(name)), m_connectedNode(connectedNode),
 	  m_maxPowerKw(maxPowerKw), m_currentPowerKw(0.0), m_powerFactor(0.95),
-	  m_isShed(false) {}
+	  m_isShed(false), m_profile(LoadProfile::Flat), m_profileStrength(1.0) {}
 
 /*
 		hourly load shedding, profiling, and noise filtering
@@ -30,19 +30,47 @@ void Load::tick(Core::Tick currentTick) {
 		return;
 	}
 	Core::u64 simHour = (currentTick / 150000) % 24;
-	Core::f64 profile = 0.75;
-	if (simHour < 6)
-		profile = 0.55;
-	else if (simHour < 9)
-		profile = 0.55 + (simHour - 6) * 0.13;
-	else if (simHour < 20)
-		profile = 0.94 + Util::Random::range(-0.03, 0.04);
-	else if (simHour < 23)
-		profile = 0.94 - (simHour - 20) * 0.13;
-	else
-		profile = 0.55;
-	Core::f64 noise = Util::Random::range(-0.01, 0.01);
+	/*
+	TODO add more sim profiles for other load types
+*/
+	Core::f64 profile = 0.80;
+
+	if (m_profile == LoadProfile::Residential) {
+		if (simHour < 5)
+			profile = 0.45;
+		else if (simHour < 8)
+			profile = 0.55 + static_cast<Core::f64>(simHour - 5) * 0.15;
+		else if (simHour < 16)
+			profile = 0.72;
+		else if (simHour < 21)
+			profile = 0.82 + static_cast<Core::f64>(simHour - 16) * 0.06;
+		else
+			profile = 1.00 - static_cast<Core::f64>(simHour - 21) * 0.12;
+	} else if (m_profile == LoadProfile::Commercial) {
+		if (simHour < 6)
+			profile = 0.30;
+		else if (simHour < 9)
+			profile = 0.50 + static_cast<Core::f64>(simHour - 6) * 0.16;
+		else if (simHour < 18)
+			profile = 0.95;
+		else if (simHour < 21)
+			profile = 0.82 - static_cast<Core::f64>(simHour - 18) * 0.18;
+		else
+			profile = 0.30;
+	} else if (m_profile == LoadProfile::Industrial) {
+		if (simHour < 6)
+			profile = 0.70;
+		else if (simHour < 18)
+			profile = 0.92;
+		else
+			profile = 0.80;
+	}
+
+	Core::f64 weatherJitter =
+		Util::Random::range(-0.05, 0.05) * m_profileStrength;
+	Core::f64 noise = Util::Random::range(-0.02, 0.02);
 	m_currentPowerKw = m_maxPowerKw * (profile + noise);
+	m_currentPowerKw *= (1.0 + weatherJitter);
 	if (m_currentPowerKw < 0.0)
 		m_currentPowerKw = 0.0;
 }

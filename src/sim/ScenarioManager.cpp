@@ -28,4 +28,13 @@ std::vector<Core::u64> ScenarioManager::getScheduledTicks() const {
 	return out;
 }
 
+void ScenarioManager::clear() { m_events.clear(); }
+
+size_t ScenarioManager::getScheduledEventCount() const {
+	size_t total = 0;
+	for (const auto &kv : m_events)
+		total += kv.second.size();
+	return total;
+}
+
 } // namespace GLStation::Simulation
