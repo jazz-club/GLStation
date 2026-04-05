@@ -111,8 +111,45 @@ JsonHandler::Value JsonHandler::parseString(const std::string &json,
 	val.type = Value::Type::String;
 	pos++;
 	while (pos < json.length() && json[pos] != '"') {
-		if (json[pos] == '\\')
-			pos++;
+		if (json[pos] == '\\' && pos + 1 < json.length()) {
+			char nxt = json[pos + 1];
+			if (nxt == '"')
+				val.str += '"';
+			else if (nxt == '\\')
+				val.str += '\\';
+			else if (nxt == '/')
+				val.str += '/';
+			else if (nxt == 'b')
+				val.str += '\b';
+			else if (nxt == 'f')
+				val.str += '\f';
+			else if (nxt == 'n')
+				val.str += '\n';
+			else if (nxt == 'r')
+				val.str += '\r';
+			else if (nxt == 't')
+				val.str += '\t';
+			else if (nxt == 'u' && pos + 6 <= json.length()) {
+				unsigned int cp = 0;
+				for (int k = 0; k < 4; ++k) {
+					char h = json[pos + 2 + static_cast<size_t>(k)];
+					cp *= 16;
+					if (h >= '0' && h <= '9')
+						cp += static_cast<unsigned int>(h - '0');
+					else if (h >= 'a' && h <= 'f')
+						cp += 10 + static_cast<unsigned int>(h - 'a');
+					else if (h >= 'A' && h <= 'F')
+						cp += 10 + static_cast<unsigned int>(h - 'A');
+				}
+				if (cp < 256)
+					val.str += static_cast<char>(cp);
+				pos += 6;
+				continue;
+			} else
+				val.str += nxt;
+			pos += 2;
+			continue;
+		}
 		val.str += json[pos++];
 	}
 	if (pos < json.length())

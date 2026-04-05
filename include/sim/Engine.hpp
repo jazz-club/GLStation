@@ -2,6 +2,7 @@
 
 #include "grid/Substation.hpp"
 #include "sim/ScenarioManager.hpp"
+#include <chrono>
 #include <deque>
 #include <filesystem>
 #include <map>
@@ -10,6 +11,14 @@
 #include <vector>
 
 namespace GLStation::Simulation {
+
+struct SimTickState {
+	std::chrono::milliseconds simTime{};
+	Core::Tick step{};
+	Core::f64 nominalHz{50.0};
+	Core::f64 systemHz{50.0};
+	Core::f64 dtSeconds{0.001};
+};
 
 class Engine {
   public:
@@ -24,6 +33,7 @@ class Engine {
 	}
 	void createDemoGrid();
 	Core::Tick getTickCount() const { return m_currentTick; }
+	std::chrono::milliseconds getSimTime() const { return m_simTime; }
 	ScenarioManager &getScenarioManager() { return m_scenarioManager; }
 	Core::f64 getSystemFrequency() const { return m_systemFrequency; }
 	Core::f64 getTotalLoad() const { return m_totalLoad; }
@@ -34,6 +44,11 @@ class Engine {
 	bool setLoadPowerById(Core::u64 id, Core::f64 powerKw);
 	bool setGenTargetPById(Core::u64 id, Core::f64 powerKw);
 	void exportVoltagesToCSV(const std::string &filename);
+	void setNominalHz(Core::f64 hz) { m_nominalHz = hz; }
+	Core::f64 getNominalHz() const { return m_nominalHz; }
+	Core::f64 getAgcIntegralMw() const { return m_agcIntegralMw; }
+	Core::f64 getRocofHzPerS() const { return m_rocofHzPerS; }
+	static SimTickState &simTickState();
 	/*
 	This is FUCKED by default btw
 	plan is to create demo scenario strengths for the imported cities 
@@ -63,7 +78,15 @@ class Engine {
 	void logEvent(const std::string &event);
 	void appendEventToCsv(Core::Tick tick, const std::string &event);
 	void updateKpis();
+	void loadUflsFile();
+	void pushSimTickState();
 	Core::Tick m_currentTick;
+	std::chrono::milliseconds m_simTime;
+	std::chrono::milliseconds m_simStep;
+	Core::f64 m_nominalHz;
+	Core::f64 m_lastFreqHz;
+	Core::f64 m_agcIntegralMw;
+	Core::f64 m_rocofHzPerS;
 	std::vector<std::shared_ptr<Grid::Substation>> m_substations;
 	ScenarioManager m_scenarioManager;
 	Core::f64 m_systemFrequency;
@@ -72,11 +95,23 @@ class Engine {
 	Core::f64 m_totalLosses;
 	std::deque<std::string> m_eventLog;
 	std::map<Core::u64, Core::u64> m_pendingTrips;
+	std::map<Core::u64, Core::u64> m_overloadStartTick;
 	std::map<Core::u64, Core::u64> m_recloseAtTick;
+	std::map<Core::u64, Core::u64> m_recloseCooldownUntil;
 	Core::f64 m_frequencyNadir;
 	Core::f64 m_maxObservedLineLoadingPercent;
 	Core::f64 m_activeShedLoadKw;
 	Core::f64 m_reserveMarginKw;
+	struct UflsStageCfg {
+		Core::f64 freqThresholdHz;
+		Core::f64 shedFraction;
+		Core::u64 delayTicks;
+		Core::f64 rocoThreshold;
+		bool triggered;
+		bool armPending;
+		Core::u64 armAtTick;
+	};
+	std::vector<UflsStageCfg> m_uflsStages;
 };
 
 } // namespace GLStation::Simulation

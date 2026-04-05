@@ -16,10 +16,13 @@ class Node : public GridComponent {
 	void setVoltage(std::complex<Core::f64> voltage);
 	std::complex<Core::f64> getVoltage() const { return m_voltage; }
 	Core::f64 getBaseVoltage() const { return m_baseVoltage; }
+	void setEnergised(bool e) { m_energised = e; }
+	bool isEnergised() const { return m_energised; }
 
   private:
 	Core::f64 m_baseVoltage;
 	std::complex<Core::f64> m_voltage;
+	bool m_energised{true};
 };
 
 } // namespace GLStation::Grid

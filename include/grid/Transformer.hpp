@@ -16,15 +16,21 @@ class Transformer : public GridComponent {
 
 	std::complex<Core::f64> getAdmittance() const;
 	Core::f64 getTap() const { return m_tap; }
+	void setPhaseShiftDeg(Core::f64 deg);
+	Core::f64 getPhaseShiftDeg() const { return m_phaseShiftDeg; }
 	Node *getPrimaryNode() const { return m_primary; }
 	Node *getSecondaryNode() const { return m_secondary; }
 	Core::f64 getCurrentLimit() const { return m_currentLimit; }
 	void setCurrentLimit(Core::f64 limit) { m_currentLimit = limit; }
 	void setTap(Core::f64 tap);
+	void setResistanceReactance(Core::f64 r, Core::f64 x);
 	Core::f64 getResistance() const { return m_resistance; }
 	Core::f64 getReactance() const { return m_reactance; }
 	Core::f64 getLosses() const;
 	std::complex<Core::f64> getCurrentFlow() const { return m_currentFlow; }
+	void setFlowFromSolverAmps(Core::f64 amps) {
+		m_currentFlow = std::complex<Core::f64>(amps, 0.0);
+	}
 
   private:
 	Node *m_primary;
@@ -32,6 +38,7 @@ class Transformer : public GridComponent {
 	Core::f64 m_resistance;
 	Core::f64 m_reactance;
 	Core::f64 m_tap;
+	Core::f64 m_phaseShiftDeg;
 	Core::f64 m_currentLimit;
 	std::complex<Core::f64> m_admittance;
 	std::complex<Core::f64> m_currentFlow;

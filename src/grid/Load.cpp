@@ -1,4 +1,5 @@
 #include "grid/Load.hpp"
+#include "sim/Engine.hpp"
 #include "util/Random.hpp"
 #include <cmath>
 #include <iomanip>
@@ -17,7 +18,8 @@ namespace GLStation::Grid {
 Load::Load(std::string name, Node *connectedNode, Core::f64 maxPowerKw)
 	: GridComponent(std::move(name)), m_connectedNode(connectedNode),
 	  m_maxPowerKw(maxPowerKw), m_currentPowerKw(0.0), m_powerFactor(0.95),
-	  m_isShed(false), m_profile(LoadProfile::Flat), m_profileStrength(1.0) {}
+	  m_isShed(false), m_profile(LoadProfile::Flat), m_profileStrength(1.0),
+	  m_freqSens(-0.02), m_zipZp(1.0) {}
 
 /*
 		hourly load shedding, profiling, and noise filtering
@@ -25,11 +27,18 @@ Load::Load(std::string name, Node *connectedNode, Core::f64 maxPowerKw)
 		case switching is self explanatory but i dont think having set definitions for profile segments is a good idea long term
 */
 void Load::tick(Core::Tick currentTick) {
+	(void)currentTick;
 	if (m_isShed) {
 		m_currentPowerKw = 0.0;
 		return;
 	}
-	Core::u64 simHour = (currentTick / 150000) % 24;
+	if (m_connectedNode && !m_connectedNode->isEnergised()) {
+		m_currentPowerKw = 0.0;
+		return;
+	}
+	auto &st = GLStation::Simulation::Engine::simTickState();
+	Core::u64 ms = static_cast<Core::u64>(st.simTime.count());
+	Core::u64 simHour = (ms / 3600000ULL) % 24ULL;
 	/*
 	TODO add more sim profiles for other load types
 */
@@ -71,6 +80,16 @@ void Load::tick(Core::Tick currentTick) {
 	Core::f64 noise = Util::Random::range(-0.02, 0.02);
 	m_currentPowerKw = m_maxPowerKw * (profile + noise);
 	m_currentPowerKw *= (1.0 + weatherJitter);
+	if (m_currentPowerKw < 0.0)
+		m_currentPowerKw = 0.0;
+	Core::f64 fn = st.nominalHz;
+	if (fn > 1e-6) {
+		m_currentPowerKw *= (1.0 + m_freqSens * (st.systemHz - fn) / fn);
+	}
+	if (m_connectedNode) {
+		Core::f64 vm = std::abs(m_connectedNode->getVoltage());
+		m_currentPowerKw *= (m_zipZp * vm + (1.0 - m_zipZp) * vm * vm);
+	}
 	if (m_currentPowerKw < 0.0)
 		m_currentPowerKw = 0.0;
 }

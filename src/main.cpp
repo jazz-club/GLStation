@@ -94,7 +94,7 @@ struct ScopedRawStdin {
 			return;
 
 		termios rawTio = oldTio;
-		rawTio.c_lflag &= static_cast<unsigned long>(~(ICANON | ECHO));
+		rawTio.c_lflag &= ~static_cast<tcflag_t>(ICANON | ECHO);
 		rawTio.c_cc[VMIN] = 0;
 		rawTio.c_cc[VTIME] = 0;
 
@@ -246,6 +246,7 @@ static void printLiveDashboard(const GLStation::Simulation::Engine &engine,
 	(void)totalTicks;
 	static std::deque<double> s_freqHistory;
 	const double freq = engine.getSystemFrequency();
+	const double nominalHz = engine.getNominalHz();
 	s_freqHistory.push_back(freq);
 	while (s_freqHistory.size() > 28)
 		s_freqHistory.pop_front();
@@ -305,15 +306,15 @@ static void printLiveDashboard(const GLStation::Simulation::Engine &engine,
 		vMaxPu = 1.0;
 
 	const char *freqColour = ANSI_RESET;
-	if (freq >= 49.8 && freq <= 50.2)
+	if (freq >= nominalHz - 0.2 && freq <= nominalHz + 0.2)
 		freqColour = ANSI_GREEN;
-	else if (freq >= 49.5 && freq <= 50.5)
+	else if (freq >= nominalHz - 0.5 && freq <= nominalHz + 0.5)
 		freqColour = ANSI_YELLOW;
 	else
 		freqColour = ANSI_RED;
 
 	const int barWidth = 22;
-	const double fMin = 49.0, fMax = 51.0;
+	const double fMin = nominalHz - 1.0, fMax = nominalHz + 1.0;
 	int pos = static_cast<int>(
 		std::round((freq - fMin) / (fMax - fMin) * (barWidth - 1)));
 	if (pos < 0)
@@ -323,7 +324,7 @@ static void printLiveDashboard(const GLStation::Simulation::Engine &engine,
 
 	std::string sparkline;
 	if (s_freqHistory.size() >= 2) {
-		double lo = 49.0, hi = 51.0;
+		double lo = nominalHz - 1.0, hi = nominalHz + 1.0;
 		for (double f : s_freqHistory) {
 			if (f < lo)
 				lo = f;
@@ -442,7 +443,7 @@ int main() {
 	try {
 		std::cout << "\n=============================================="
 				  << std::endl;
-		std::cout << "   GLSStation" << std::endl;
+		std::cout << "   GLStation" << std::endl;
 		std::cout << "==============================================\n"
 				  << std::endl;
 

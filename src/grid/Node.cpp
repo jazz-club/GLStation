@@ -12,7 +12,7 @@ namespace GLStation::Grid {
 */
 Node::Node(std::string name, Core::f64 baseVoltage)
 	: GridComponent(std::move(name)), m_baseVoltage(baseVoltage),
-	  m_voltage(1.0, 0.0) {}
+	  m_voltage(1.0, 0.0), m_energised(true) {}
 
 void Node::tick(Core::Tick) {}
 

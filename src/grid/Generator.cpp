@@ -1,6 +1,7 @@
 #include "grid/Generator.hpp"
 #include "util/Random.hpp"
 #include <algorithm>
+#include <cmath>
 #include <iomanip>
 #include <sstream>
 
@@ -17,7 +18,11 @@ Generator::Generator(std::string name, Node *connectedNode, GeneratorMode mode)
 	  m_mode(mode), m_profile(GeneratorProfile::Manual), m_targetP(0.0),
 	  m_actualP(0.0), m_targetV(1.0), m_minQ(-9999.0), m_maxQ(9999.0),
 	  m_minP(0.0), m_maxP(200000.0), m_droop(20.0), m_inertia(5.0),
-	  m_maxRampRate(500.0), m_profileStrength(1.0) {}
+	  m_maxRampRate(500.0), m_profileStrength(1.0), m_droopTargetKw(0.0),
+	  m_exciterVpu(1.0), m_actualQKw(0.0), m_pvQClamp(false), m_qFixedKw(0.0),
+	  m_windAr(0.0) {
+	m_droopTargetKw = m_actualP;
+}
 
 /*
         default frequency set to 50 for now, i dont know enough about
@@ -29,16 +34,33 @@ Generator::Generator(std::string name, Node *connectedNode, GeneratorMode mode)
 		i have no idea potentially uncap this in the future just so we're more
         realistic i guess https://www.evs.ee/en/iso-3046-1-1995
 */
-void Generator::applyDroopResponse(Core::f64 freqHz) {
+void Generator::applyDroopResponse(Core::f64 freqHz, Core::f64 nominalHz) {
 	if (m_mode == GeneratorMode::Slack)
 		return;
-	Core::f64 df = freqHz - 50.0;
+	Core::f64 df = freqHz - nominalHz;
 	Core::f64 dP = -m_droop * 1000.0 * df;
-	Core::f64 desired = std::clamp(m_targetP + dP, m_minP, m_maxP);
-	Core::f64 maxDelta = m_maxRampRate;
-	Core::f64 rawDelta = desired - m_actualP;
-	Core::f64 clampedDelta = std::clamp(rawDelta, -maxDelta, maxDelta);
-	m_actualP = std::clamp(m_actualP + clampedDelta, m_minP, m_maxP);
+	m_droopTargetKw = std::clamp(m_targetP + dP, m_minP, m_maxP);
+}
+
+void Generator::stepGovernor(Core::f64 dtSec) {
+	(void)dtSec;
+	if (m_mode == GeneratorMode::Slack)
+		return;
+	Core::f64 alpha = 0.12;
+	Core::f64 rawDelta = m_droopTargetKw - m_actualP;
+	Core::f64 step =
+		std::clamp(alpha * rawDelta, -m_maxRampRate, m_maxRampRate);
+	m_actualP = std::clamp(m_actualP + step, m_minP, m_maxP);
+}
+
+void Generator::stepExciter(Core::f64 dtSec) {
+	(void)dtSec;
+	if (m_mode == GeneratorMode::Slack) {
+		m_exciterVpu = m_targetV;
+		return;
+	}
+	Core::f64 beta = 0.08;
+	m_exciterVpu += beta * (m_targetV - m_exciterVpu);
 }
 
 /*
@@ -53,13 +75,17 @@ void Generator::tick(Core::Tick) {
 	refer to Generator.hpp
 */
 	Core::f64 profileScale = 1.0;
-	if (m_profile == GeneratorProfile::Wind)
-		profileScale =
-			0.70 + Util::Random::range(-0.25, 0.25) * m_profileStrength;
-	else if (m_profile == GeneratorProfile::Solar)
+	if (m_profile == GeneratorProfile::Wind) {
+		Core::f64 phi = 0.92;
+		Core::f64 noise = Util::Random::range(-0.08, 0.08) * m_profileStrength;
+		m_windAr = phi * m_windAr + noise;
+		m_windAr = std::clamp(m_windAr, -0.35, 0.35);
+		profileScale = std::clamp(
+			0.70 + m_windAr + Util::Random::range(-0.05, 0.05), 0.2, 1.25);
+	} else if (m_profile == GeneratorProfile::Solar) {
 		profileScale =
 			0.78 + Util::Random::range(-0.20, 0.20) * m_profileStrength;
-	else if (m_profile == GeneratorProfile::Hydro)
+	} else if (m_profile == GeneratorProfile::Hydro)
 		profileScale =
 			0.92 + Util::Random::range(-0.05, 0.06) * m_profileStrength;
 	else if (m_profile == GeneratorProfile::Thermal)
@@ -73,6 +99,7 @@ void Generator::tick(Core::Tick) {
 	Core::f64 clampedDelta =
 		std::clamp(rawDelta, -m_maxRampRate, m_maxRampRate);
 	m_actualP = std::clamp(m_actualP + clampedDelta, m_minP, m_maxP);
+	m_droopTargetKw = m_actualP;
 }
 
 /*

@@ -175,6 +175,7 @@ NetworkResponse NetworkClient::get(const std::string &url) {
 
 #else
 #include <curl/curl.h>
+#include <mutex>
 
 namespace GLStation::Util {
 
@@ -186,8 +187,10 @@ static size_t writeCallback(char *ptr, size_t size, size_t nmemb,
 	return total;
 }
 
+static std::once_flag s_curlOnce;
+
 NetworkClient::NetworkClient() : m_handle(nullptr) {
-	curl_global_init(CURL_GLOBAL_DEFAULT);
+	std::call_once(s_curlOnce, []() { curl_global_init(CURL_GLOBAL_DEFAULT); });
 	m_handle = curl_easy_init();
 }
 
@@ -196,7 +199,6 @@ NetworkClient::~NetworkClient() {
 		curl_easy_cleanup(static_cast<CURL *>(m_handle));
 		m_handle = nullptr;
 	}
-	curl_global_cleanup();
 }
 
 NetworkResponse NetworkClient::get(const std::string &url) {

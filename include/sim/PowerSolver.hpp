@@ -16,6 +16,8 @@ struct SolverSettings {
 
 class PowerSolver {
   public:
+	static Core::f64 sBaseKw();
+	static Core::f64 sBaseMva();
 	static void
 	solve(const std::vector<std::shared_ptr<::GLStation::Grid::Substation>>
 			  &substations,
@@ -27,7 +29,10 @@ class PowerSolver {
 
   private:
 	static bool runIteration(const SolverSettings &settings);
+	static void updateGeneratorQFromSolution();
 	static void updateSlackGeneratorPowerFromSolution();
+	static void syncBranchFlowsFromPUSolution();
+	static bool resolvePvQLimits();
 	static std::unique_ptr<Util::SparseMatrix<std::complex<Core::f64>>> s_yBus;
 };
 

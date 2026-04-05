@@ -3,12 +3,15 @@
 #include "grid/Line.hpp"
 #include "grid/Load.hpp"
 #include "grid/Node.hpp"
+#include "grid/Shunt.hpp"
 #include "grid/Transformer.hpp"
 #include "sim/PowerSolver.hpp"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <map>
+#include <queue>
+#include <vector>
 
 /*
 		please just refer to https://www.ijert.org/research/load-flow-solution-u-sing-simplified-newton-raphson-method-IJERTV2IS121281.pdf
@@ -25,7 +28,19 @@ static bool s_busDiscard = true;
 static std::vector<Grid::Node *> s_busNodes;
 static std::vector<Grid::Load *> s_loadList;
 static std::vector<Grid::Generator *> s_generatorList;
+static std::vector<Grid::Line *> s_lineList;
+static std::vector<Grid::Transformer *> s_trafoList;
+static size_t s_slackIdx = 0;
+static std::vector<char> s_energisedBus;
+static std::vector<std::vector<Core::f64>> s_Jbuf;
 
+Core::f64 PowerSolver::sBaseKw() { return 100000.0; }
+Core::f64 PowerSolver::sBaseMva() { return 100.0; }
+
+/*
+		the Ybus admittance matrix populator yayy!!! 
+		zbase = V^2/Sbase per node, Y = 1/Z per branch in pu lines add y between m_from and m_to
+*/
 static bool sameUndirectedEndpoints(Grid::Node *a, Grid::Node *b, Grid::Node *c,
 									Grid::Node *d) {
 	if (!a || !b || !c || !d)
@@ -33,21 +48,194 @@ static bool sameUndirectedEndpoints(Grid::Node *a, Grid::Node *b, Grid::Node *c,
 	return (a == c && b == d) || (a == d && b == c);
 }
 
+static bool
+lineSkippedByOpenBreaker(Grid::Line *line,
+						 const std::vector<Grid::Breaker *> &breakers) {
+	auto from = line->getFromNode();
+	auto to = line->getToNode();
+	for (auto brk : breakers) {
+		if (!brk->isOpen())
+			continue;
+		if (sameUndirectedEndpoints(from, to, brk->getFromNode(),
+									brk->getToNode()))
+			return true;
+	}
+	return false;
+}
+
+static void markIslandsAndEnergizationImpl(
+	const std::vector<std::shared_ptr<::GLStation::Grid::Substation>>
+		&substations) {
+	std::vector<Grid::Line *> allLines;
+	std::vector<Grid::Transformer *> allTrafos;
+	std::vector<Grid::Breaker *> allBreakers;
+	for (const auto &sub : substations) {
+		for (const auto &comp : sub->getComponents()) {
+			if (auto line = dynamic_cast<Grid::Line *>(comp.get()))
+				allLines.push_back(line);
+			else if (auto trafo = dynamic_cast<Grid::Transformer *>(comp.get()))
+				allTrafos.push_back(trafo);
+			else if (auto brk = dynamic_cast<Grid::Breaker *>(comp.get()))
+				allBreakers.push_back(brk);
+		}
+	}
+	std::map<Grid::Node *, std::vector<Grid::Node *>> adj;
+	auto addEdge = [&](Grid::Node *a, Grid::Node *b) {
+		if (!a || !b)
+			return;
+		adj[a].push_back(b);
+		adj[b].push_back(a);
+	};
+	for (auto line : allLines) {
+		if (lineSkippedByOpenBreaker(line, allBreakers))
+			continue;
+		addEdge(line->getFromNode(), line->getToNode());
+	}
+	for (auto trafo : allTrafos) {
+		addEdge(trafo->getPrimaryNode(), trafo->getSecondaryNode());
+	}
+	for (auto brk : allBreakers) {
+		if (brk->isOpen())
+			continue;
+		bool paired = false;
+		for (auto line : allLines) {
+			if (sameUndirectedEndpoints(brk->getFromNode(), brk->getToNode(),
+										line->getFromNode(),
+										line->getToNode())) {
+				paired = true;
+				break;
+			}
+		}
+		if (!paired)
+			addEdge(brk->getFromNode(), brk->getToNode());
+	}
+	s_energisedBus.assign(s_busNodes.size(), 0);
+	if (s_slackIdx >= s_busNodes.size())
+		return;
+	Grid::Node *slackNode = s_busNodes[s_slackIdx];
+	std::queue<Grid::Node *> q;
+	std::map<Grid::Node *, char> vis;
+	q.push(slackNode);
+	vis[slackNode] = 1;
+	while (!q.empty()) {
+		Grid::Node *u = q.front();
+		q.pop();
+		auto it = adj.find(u);
+		if (it == adj.end())
+			continue;
+		for (Grid::Node *v : it->second) {
+			if (!vis[v]) {
+				vis[v] = 1;
+				q.push(v);
+			}
+		}
+	}
+	for (size_t i = 0; i < s_busNodes.size(); ++i) {
+		bool ok = vis.count(s_busNodes[i]) != 0;
+		s_energisedBus[i] = ok ? 1 : 0;
+		s_busNodes[i]->setEnergised(ok);
+		if (!ok)
+			s_busNodes[i]->setVoltage(std::complex<Core::f64>(0.0, 0.0));
+	}
+}
+
+static size_t findSlackBusIndex() {
+	for (size_t i = 0; i < s_busNodes.size(); ++i) {
+		for (auto gen : s_generatorList) {
+			if (gen->getConnectedNode() == s_busNodes[i] &&
+				gen->getMode() == Grid::GeneratorMode::Slack)
+				return i;
+		}
+	}
+	return 0;
+}
+
+void PowerSolver::updateGeneratorQFromSolution() {
+	if (!s_yBus || s_busNodes.empty())
+		return;
+	size_t n = s_busNodes.size();
+	const auto &vals = s_yBus->getValues();
+	const auto &cols = s_yBus->getColIndex();
+	const auto &rowPtr = s_yBus->getRowPtr();
+	for (auto gen : s_generatorList) {
+		if (gen->getMode() != Grid::GeneratorMode::PV)
+			continue;
+		Grid::Node *node = gen->getConnectedNode();
+		if (!node)
+			continue;
+		size_t si = n;
+		for (size_t i = 0; i < n; ++i) {
+			if (s_busNodes[i] == node) {
+				si = i;
+				break;
+			}
+		}
+		if (si >= n)
+			continue;
+		std::complex<Core::f64> Vi = s_busNodes[si]->getVoltage();
+		std::complex<Core::f64> Ii(0, 0);
+		for (size_t k = rowPtr[si]; k < rowPtr[si + 1]; ++k)
+			Ii += vals[k] * s_busNodes[cols[k]]->getVoltage();
+		std::complex<Core::f64> Si = Vi * std::conj(Ii);
+		Core::f64 qLoadKvar = 0;
+		for (auto load : s_loadList) {
+			if (load->getConnectedNode() != node)
+				continue;
+			Core::f64 P = load->getCurrentConsumption();
+			Core::f64 pf = load->getPowerFactor();
+			if (pf > 1e-6)
+				qLoadKvar += P * std::sqrt(std::max(0.0, 1.0 - pf * pf)) / pf;
+		}
+		Core::f64 qGenKw = std::imag(Si) * sBaseKw() + qLoadKvar;
+		gen->setActualQKw(qGenKw);
+	}
+}
+
+bool PowerSolver::resolvePvQLimits() {
+	bool any = false;
+	for (auto gen : s_generatorList) {
+		if (gen->getMode() != Grid::GeneratorMode::PV) {
+			gen->setPvQClampActive(false, 0.0);
+			continue;
+		}
+		Core::f64 q = gen->getActualQKw();
+		if (q > gen->getMaxQ()) {
+			gen->setPvQClampActive(true, gen->getMaxQ());
+			any = true;
+		} else if (q < gen->getMinQ()) {
+			gen->setPvQClampActive(true, gen->getMinQ());
+			any = true;
+		} else
+			gen->setPvQClampActive(false, 0.0);
+	}
+	return any;
+}
+
 void PowerSolver::solve(
 	const std::vector<std::shared_ptr<::GLStation::Grid::Substation>>
 		&substations,
 	const SolverSettings &settings) {
-	if (s_busDiscard || !s_yBus || s_busNodes.empty()) {
-		buildYBus(substations);
-		s_busDiscard = false;
-	}
-	if (!s_yBus || s_busNodes.empty())
-		return;
-	for (::GLStation::Core::u32 i = 0; i < settings.maxIterations; ++i) {
-		if (runIteration(settings))
+	for (auto gen : s_generatorList)
+		gen->setPvQClampActive(false, 0.0);
+	for (int outer = 0; outer < 8; ++outer) {
+		if (s_busDiscard || !s_yBus || s_busNodes.empty()) {
+			buildYBus(substations);
+			s_busDiscard = false;
+		}
+		if (!s_yBus || s_busNodes.empty())
+			return;
+		s_slackIdx = findSlackBusIndex();
+		markIslandsAndEnergizationImpl(substations);
+		for (::GLStation::Core::u32 i = 0; i < settings.maxIterations; ++i) {
+			if (runIteration(settings))
+				break;
+		}
+		updateSlackGeneratorPowerFromSolution();
+		updateGeneratorQFromSolution();
+		syncBranchFlowsFromPUSolution();
+		if (!resolvePvQLimits())
 			break;
 	}
-	updateSlackGeneratorPowerFromSolution();
 }
 
 void PowerSolver::invalidateYBus() {
@@ -55,21 +243,18 @@ void PowerSolver::invalidateYBus() {
 	s_yBus.reset();
 }
 
-static const Core::f64 S_BASE = 100000.0;
-
-/*
-		the Ybus admittance matrix populator yayy!!! 
-		zbase = V^2/Sbase per node, Y = 1/Z per branch in pu lines add y between m_from and m_to
-*/
 void PowerSolver::buildYBus(
 	const std::vector<std::shared_ptr<::GLStation::Grid::Substation>>
 		&substations) {
 	s_busNodes.clear();
 	s_loadList.clear();
 	s_generatorList.clear();
+	s_lineList.clear();
+	s_trafoList.clear();
 	std::vector<Grid::Line *> allLines;
 	std::vector<Grid::Transformer *> allTransformers;
 	std::vector<Grid::Breaker *> allBreakers;
+	std::vector<Grid::Shunt *> allShunts;
 
 	for (const auto &sub : substations) {
 		for (const auto &comp : sub->getComponents()) {
@@ -77,6 +262,7 @@ void PowerSolver::buildYBus(
 				s_busNodes.push_back(node);
 			} else if (auto line = dynamic_cast<Grid::Line *>(comp.get())) {
 				allLines.push_back(line);
+				s_lineList.push_back(line);
 			} else if (auto load = dynamic_cast<Grid::Load *>(comp.get())) {
 				s_loadList.push_back(load);
 			} else if (auto gen = dynamic_cast<Grid::Generator *>(comp.get())) {
@@ -84,9 +270,12 @@ void PowerSolver::buildYBus(
 			} else if (auto trafo =
 						   dynamic_cast<Grid::Transformer *>(comp.get())) {
 				allTransformers.push_back(trafo);
+				s_trafoList.push_back(trafo);
 			} else if (auto breaker =
 						   dynamic_cast<Grid::Breaker *>(comp.get())) {
 				allBreakers.push_back(breaker);
+			} else if (auto sh = dynamic_cast<Grid::Shunt *>(comp.get())) {
+				allShunts.push_back(sh);
 			}
 		}
 	}
@@ -103,7 +292,7 @@ void PowerSolver::buildYBus(
 	for (size_t i = 0; i < busCount; ++i) {
 		nodeToIndex[s_busNodes[i]] = i;
 		Core::f64 vbase = s_busNodes[i]->getBaseVoltage();
-		nodeZBase[s_busNodes[i]] = (vbase * vbase) / (S_BASE / 1000.0);
+		nodeZBase[s_busNodes[i]] = (vbase * vbase) / (sBaseKw() / 1000.0);
 	}
 
 	std::map<std::pair<size_t, size_t>, std::complex<Core::f64>> y_temp;
@@ -113,9 +302,6 @@ void PowerSolver::buildYBus(
 		auto to = line->getToNode();
 		if (!from || !to)
 			continue;
-		/*
-		breaker logic to deal with line overloads, 3P soon
-*/
 		bool skipLine = false;
 		for (auto brk : allBreakers) {
 			if (!brk->isOpen())
@@ -143,6 +329,14 @@ void PowerSolver::buildYBus(
 		y_temp[{j, i}] -= y;
 		y_temp[{i, i}] += y;
 		y_temp[{j, j}] += y;
+
+		Core::f64 btot = line->getLineChargingSusceptancePu();
+		if (std::abs(btot) > 1e-12) {
+			Core::f64 bh = btot * 0.5;
+			std::complex<Core::f64> jb(0.0, bh);
+			y_temp[{i, i}] += jb;
+			y_temp[{j, j}] += jb;
+		}
 	}
 
 	for (auto trafo : allTransformers) {
@@ -161,14 +355,15 @@ void PowerSolver::buildYBus(
 			(std::abs(z_pu) > 1e-9) ? (std::complex<Core::f64>(1.0, 0.0) / z_pu)
 									: 0.0;
 
-		Core::f64 a =
-			trafo->getTap() / (pri->getBaseVoltage() / sec->getBaseVoltage());
-		if (std::abs(a) < 1e-6)
+		Core::f64 ratio = pri->getBaseVoltage() / sec->getBaseVoltage();
+		Core::f64 ph = trafo->getPhaseShiftDeg() * Core::PI / 180.0;
+		std::complex<Core::f64> a = std::polar(trafo->getTap() / ratio, ph);
+		if (std::abs(a) < 1e-9)
 			a = 1.0;
 
-		y_temp[{i, i}] += y / (a * a);
+		y_temp[{i, i}] += y / (a * std::conj(a));
 		y_temp[{j, j}] += y;
-		y_temp[{i, j}] -= y / a;
+		y_temp[{i, j}] -= y / std::conj(a);
 		y_temp[{j, i}] -= y / a;
 	}
 
@@ -203,6 +398,15 @@ void PowerSolver::buildYBus(
 		y_temp[{j, j}] += y;
 	}
 
+	for (auto sh : allShunts) {
+		Grid::Node *n = sh->getNode();
+		if (!n || !nodeToIndex.count(n))
+			continue;
+		size_t k = nodeToIndex[n];
+		std::complex<Core::f64> ysh(sh->getGPu(), sh->getBPu());
+		y_temp[{k, k}] += ysh;
+	}
+
 	std::vector<std::complex<Core::f64>> values;
 	std::vector<size_t> colIndex;
 	std::vector<size_t> rowPtr;
@@ -221,6 +425,50 @@ void PowerSolver::buildYBus(
 	s_yBus = std::make_unique<Util::SparseMatrix<std::complex<Core::f64>>>(
 		busCount, busCount);
 	s_yBus->setDirect(values, colIndex, rowPtr);
+}
+
+void PowerSolver::syncBranchFlowsFromPUSolution() {
+	for (auto line : s_lineList) {
+		auto from = line->getFromNode();
+		auto to = line->getToNode();
+		if (!from || !to)
+			continue;
+		std::complex<Core::f64> Vf = from->getVoltage();
+		std::complex<Core::f64> Vt = to->getVoltage();
+		Core::f64 zbase = (from->getBaseVoltage() * from->getBaseVoltage()) /
+						  (sBaseKw() / 1000.0);
+		std::complex<Core::f64> z_pu(line->getResistance() / zbase,
+									 line->getReactance() / zbase);
+		std::complex<Core::f64> y_s =
+			(std::abs(z_pu) > 1e-12) ? (1.0 / z_pu) : 0.0;
+		Core::f64 bh = line->getLineChargingSusceptancePu() * 0.5;
+		std::complex<Core::f64> Ipu =
+			(Vf - Vt) * y_s + Vf * std::complex<Core::f64>(0.0, bh);
+		line->setFlowFromSolverPu(Ipu, 0.0);
+	}
+	for (auto trafo : s_trafoList) {
+		auto pri = trafo->getPrimaryNode();
+		auto sec = trafo->getSecondaryNode();
+		if (!pri || !sec)
+			continue;
+		std::complex<Core::f64> Vi = pri->getVoltage();
+		std::complex<Core::f64> Vj = sec->getVoltage();
+		Core::f64 zbase = (pri->getBaseVoltage() * pri->getBaseVoltage()) /
+						  (sBaseKw() / 1000.0);
+		std::complex<Core::f64> z_pu(trafo->getResistance() / zbase,
+									 trafo->getReactance() / zbase);
+		std::complex<Core::f64> y =
+			(std::abs(z_pu) > 1e-12) ? (1.0 / z_pu) : 0.0;
+		Core::f64 ratio = pri->getBaseVoltage() / sec->getBaseVoltage();
+		Core::f64 ph = trafo->getPhaseShiftDeg() * Core::PI / 180.0;
+		std::complex<Core::f64> a = std::polar(trafo->getTap() / ratio, ph);
+		std::complex<Core::f64> Ipu = (Vi / a - Vj) * y;
+		Core::f64 sMva = std::abs(Vi * std::conj(Ipu)) * sBaseMva();
+		Core::f64 vll = pri->getBaseVoltage() * std::abs(Vi);
+		Core::f64 amps =
+			(vll > 1e-9) ? (sMva * 1000.0 / (std::sqrt(3.0) * vll)) : 0.0;
+		trafo->setFlowFromSolverAmps(amps);
+	}
 }
 
 /*
@@ -262,7 +510,7 @@ void PowerSolver::updateSlackGeneratorPowerFromSolution() {
 			if (load->getConnectedNode() == node)
 				loadKw += load->getCurrentConsumption();
 		}
-		gen->setActualPowerKw(Si_pu.real() * S_BASE + loadKw);
+		gen->setActualPowerKw(Si_pu.real() * sBaseKw() + loadKw);
 	}
 }
 
@@ -319,24 +567,31 @@ static void simpleSolve(std::vector<std::vector<Core::f64>> &A,
 		https://www.ijert.org/research/load-flow-solution-u-sing-simplified-newton-raphson-method-IJERTV2IS121281.pdf
 */
 bool PowerSolver::runIteration(const SolverSettings &settings) {
+	(void)settings;
 	if (!s_yBus)
 		return true;
 	size_t n = s_busNodes.size();
+	s_slackIdx = findSlackBusIndex();
 
 	std::vector<size_t> pq_indices, pv_indices;
-	size_t slack_idx = 0;
+	size_t slack_idx = s_slackIdx;
 
 	for (size_t i = 0; i < n; ++i) {
+		if (!s_energisedBus.empty() && i < s_energisedBus.size() &&
+			!s_energisedBus[i]) {
+			continue;
+		}
 		auto node = s_busNodes[i];
-		bool isSlack = (i == 0);
+		bool isSlack = false;
 		bool isPV = false;
 		for (auto gen : s_generatorList) {
-			if (gen->getConnectedNode() == node) {
-				if (gen->getMode() == Grid::GeneratorMode::Slack)
-					isSlack = true;
-				if (gen->getMode() == Grid::GeneratorMode::PV)
-					isPV = true;
-			}
+			if (gen->getConnectedNode() != node)
+				continue;
+			if (gen->getMode() == Grid::GeneratorMode::Slack)
+				isSlack = true;
+			else if (gen->getMode() == Grid::GeneratorMode::PV &&
+					 !gen->isPvQClampActive())
+				isPV = true;
 		}
 		if (isSlack)
 			slack_idx = i;
@@ -361,6 +616,12 @@ bool PowerSolver::runIteration(const SolverSettings &settings) {
 	}
 
 	for (size_t i = 0; i < n; ++i) {
+		if (!s_energisedBus.empty() && i < s_energisedBus.size() &&
+			!s_energisedBus[i]) {
+			mismatches[i].deltaP = 0;
+			mismatches[i].deltaQ = 0;
+			continue;
+		}
 		std::complex<Core::f64> Vi_pu = s_busNodes[i]->getVoltage();
 		std::complex<Core::f64> Ii_pu(0, 0);
 
@@ -375,14 +636,19 @@ bool PowerSolver::runIteration(const SolverSettings &settings) {
 
 		Core::f64 P_sched_pu = 0, Q_sched_pu = 0;
 		for (auto gen : s_generatorList)
-			if (gen->getConnectedNode() == s_busNodes[i])
-				P_sched_pu += gen->getActualP() / S_BASE;
+			if (gen->getConnectedNode() == s_busNodes[i]) {
+				if (gen->getMode() != Grid::GeneratorMode::Slack)
+					P_sched_pu += gen->getActualP() / sBaseKw();
+				if (gen->getMode() == Grid::GeneratorMode::PV &&
+					gen->isPvQClampActive())
+					Q_sched_pu += gen->getQFixedKw() / sBaseKw();
+			}
 		for (auto load : s_loadList) {
 			if (load->getConnectedNode() == s_busNodes[i]) {
 				Core::f64 P = load->getCurrentConsumption();
 				Core::f64 pf = load->getPowerFactor();
-				P_sched_pu -= P / S_BASE;
-				Q_sched_pu -= (P * std::sqrt(1.0 - pf * pf) / pf) / S_BASE;
+				P_sched_pu -= P / sBaseKw();
+				Q_sched_pu -= (P * std::sqrt(1.0 - pf * pf) / pf) / sBaseKw();
 			}
 		}
 
@@ -405,8 +671,12 @@ bool PowerSolver::runIteration(const SolverSettings &settings) {
 	size_t n_pv = pv_indices.size();
 	size_t dim = n_pq * 2 + n_pv;
 
-	std::vector<std::vector<Core::f64>> J(dim,
-										  std::vector<Core::f64>(dim, 0.0));
+	if (s_Jbuf.size() != dim)
+		s_Jbuf.assign(dim, std::vector<Core::f64>(dim, 0.0));
+	else {
+		for (auto &row : s_Jbuf)
+			std::fill(row.begin(), row.end(), 0.0);
+	}
 	std::vector<Core::f64> b(dim, 0.0);
 
 	std::map<size_t, size_t> theta_map, v_map;
@@ -420,6 +690,11 @@ bool PowerSolver::runIteration(const SolverSettings &settings) {
 
 	for (size_t i = 0; i < n; ++i) {
 		if (i == slack_idx)
+			continue;
+		if (!s_energisedBus.empty() && i < s_energisedBus.size() &&
+			!s_energisedBus[i])
+			continue;
+		if (!theta_map.count(i))
 			continue;
 
 		std::complex<Core::f64> Vi_pu = s_busNodes[i]->getVoltage();
@@ -454,6 +729,11 @@ bool PowerSolver::runIteration(const SolverSettings &settings) {
 			size_t j = cols[k];
 			if (j == slack_idx)
 				continue;
+			if (!s_energisedBus.empty() && j < s_energisedBus.size() &&
+				!s_energisedBus[j])
+				continue;
+			if (!theta_map.count(j))
+				continue;
 
 			std::complex<Core::f64> Vj_pu = s_busNodes[j]->getVoltage();
 			Core::f64 Vj = std::abs(Vj_pu);
@@ -464,31 +744,31 @@ bool PowerSolver::runIteration(const SolverSettings &settings) {
 			Core::f64 dij = delta_i - delta_j;
 
 			if (i == j) {
-				J[row_theta][row_theta] = -Qi - Bij * Vi * Vi;
+				s_Jbuf[row_theta][row_theta] = -Qi - Bij * Vi * Vi;
 				if (v_map.count(i)) {
 					size_t row_v = v_map[i];
-					J[row_theta][row_v] = (Pi + Gij * Vi * Vi) / Vi;
-					J[row_v][row_theta] = Pi - Gij * Vi * Vi;
-					J[row_v][row_v] = (Qi - Bij * Vi * Vi) / Vi;
+					s_Jbuf[row_theta][row_v] = (Pi + Gij * Vi * Vi) / Vi;
+					s_Jbuf[row_v][row_theta] = Pi - Gij * Vi * Vi;
+					s_Jbuf[row_v][row_v] = (Qi - Bij * Vi * Vi) / Vi;
 				}
 			} else {
 				size_t col_theta = theta_map[j];
-				J[row_theta][col_theta] =
+				s_Jbuf[row_theta][col_theta] =
 					Vi * Vj * (Gij * sin(dij) - Bij * cos(dij));
 				if (v_map.count(i)) {
 					size_t row_v = v_map[i];
-					J[row_v][col_theta] =
+					s_Jbuf[row_v][col_theta] =
 						-Vi * Vj * (Gij * cos(dij) + Bij * sin(dij));
 					if (v_map.count(j)) {
 						size_t col_v = v_map[j];
-						J[row_theta][col_v] =
+						s_Jbuf[row_theta][col_v] =
 							Vi * (Gij * cos(dij) + Bij * sin(dij));
-						J[row_v][col_v] =
+						s_Jbuf[row_v][col_v] =
 							Vi * (Gij * sin(dij) - Bij * cos(dij));
 					}
 				} else if (v_map.count(j)) {
 					size_t col_v = v_map[j];
-					J[row_theta][col_v] =
+					s_Jbuf[row_theta][col_v] =
 						Vi * (Gij * cos(dij) + Bij * sin(dij));
 				}
 			}
@@ -496,7 +776,7 @@ bool PowerSolver::runIteration(const SolverSettings &settings) {
 	}
 
 	std::vector<Core::f64> dx;
-	simpleSolve(J, b, dx);
+	simpleSolve(s_Jbuf, b, dx);
 
 	for (size_t i : pq_indices) {
 		Core::f64 angle =

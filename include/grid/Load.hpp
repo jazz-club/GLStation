@@ -25,6 +25,8 @@ class Load : public GridComponent {
 	void setProfileStrength(Core::f64 strength) {
 		m_profileStrength = strength;
 	}
+	void setFreqSensitivity(Core::f64 k) { m_freqSens = k; }
+	void setZipZp(Core::f64 zp) { m_zipZp = zp; }
 
 	void shed() { m_isShed = true; }
 	void restore() { m_isShed = false; }
@@ -40,6 +42,8 @@ class Load : public GridComponent {
 	bool m_isShed;
 	LoadProfile m_profile;
 	Core::f64 m_profileStrength;
+	Core::f64 m_freqSens;
+	Core::f64 m_zipZp;
 };
 
 } // namespace GLStation::Grid

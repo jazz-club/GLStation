@@ -15,6 +15,7 @@ class GridComponent {
 
 	const std::string &getName() const { return m_name; }
 	Core::u64 getId() const { return m_id; }
+	static void resetIdCounter();
 
   protected:
 	Core::u64 m_id;

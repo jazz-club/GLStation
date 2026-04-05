@@ -19,7 +19,8 @@ Transformer::Transformer(std::string name, Node *primary, Node *secondary,
 						 Core::f64 r, Core::f64 x, Core::f64 tap)
 	: GridComponent(std::move(name)), m_primary(primary),
 	  m_secondary(secondary), m_resistance(r), m_reactance(x), m_tap(tap),
-	  m_currentLimit(1000.0), m_admittance(0, 0), m_currentFlow(0, 0) {
+	  m_phaseShiftDeg(0.0), m_currentLimit(1000.0), m_admittance(0, 0),
+	  m_currentFlow(0, 0) {
 	std::complex<Core::f64> z(r, x);
 	if (std::abs(z) > Core::EPSILON) {
 		m_admittance = 1.0 / z;
@@ -31,18 +32,39 @@ void Transformer::setTap(Core::f64 tap) {
 	GLStation::Simulation::PowerSolver::invalidateYBus();
 }
 
+void Transformer::setPhaseShiftDeg(Core::f64 deg) {
+	m_phaseShiftDeg = deg;
+	GLStation::Simulation::PowerSolver::invalidateYBus();
+}
+
+void Transformer::setResistanceReactance(Core::f64 r, Core::f64 x) {
+	m_resistance = r;
+	m_reactance = x;
+	std::complex<Core::f64> z(r, x);
+	if (std::abs(z) > Core::EPSILON) {
+		m_admittance = 1.0 / z;
+	} else {
+		m_admittance = 0.0;
+	}
+	GLStation::Simulation::PowerSolver::invalidateYBus();
+}
+
 /*
 		pu × base, current available current is primary - secondary voltage normalised to Kv
 */
 void Transformer::tick(Core::Tick) {
 	if (!m_primary || !m_secondary)
 		return;
+	if (std::abs(m_currentFlow) > 1e-9)
+		return;
 	std::complex<Core::f64> vpKv =
 		m_primary->getVoltage() * m_primary->getBaseVoltage() / std::sqrt(3.0);
 	std::complex<Core::f64> vsKv = m_secondary->getVoltage() *
 								   m_secondary->getBaseVoltage() /
 								   std::sqrt(3.0);
-	std::complex<Core::f64> vpAdjusted = vpKv / m_tap;
+	Core::f64 ph = m_phaseShiftDeg * GLStation::Core::PI / 180.0;
+	std::complex<Core::f64> shift(std::cos(ph), std::sin(ph));
+	std::complex<Core::f64> vpAdjusted = (vpKv / m_tap) * shift;
 	std::complex<Core::f64> vDiff = vpAdjusted - vsKv;
 	m_currentFlow = (vDiff * 1000.0) * m_admittance;
 }
@@ -68,7 +90,8 @@ std::string Transformer::toString() const {
 	   << (m_secondary ? m_secondary->getName() : "N/A") << " ("
 	   << (m_secondary ? m_secondary->getBaseVoltage() : 0.0)
 	   << "kV) | Tap: " << std::fixed << std::setprecision(2) << m_tap
-	   << ", Z: " << std::fixed << std::setprecision(3) << m_resistance << "+j"
+	   << ", ph: " << std::setprecision(1) << m_phaseShiftDeg
+	   << " deg, Z: " << std::setprecision(3) << m_resistance << "+j"
 	   << m_reactance;
 	return ss.str();
 }

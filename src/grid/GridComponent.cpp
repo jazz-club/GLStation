@@ -14,6 +14,8 @@ Core::u64 GridComponent::s_nextId = 1;
 GridComponent::GridComponent(std::string name)
 	: m_id(s_nextId++), m_name(std::move(name)) {}
 
+void GridComponent::resetIdCounter() { s_nextId = 1; }
+
 std::string GridComponent::toString() const {
 	return std::format("[Component #{}] {}", m_id, m_name);
 }

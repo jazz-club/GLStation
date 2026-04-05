@@ -24,6 +24,8 @@ class Generator : public GridComponent {
 		m_minQ = minQ;
 		m_maxQ = maxQ;
 	}
+	Core::f64 getMinQ() const { return m_minQ; }
+	Core::f64 getMaxQ() const { return m_maxQ; }
 
 	Core::f64 getTargetP() const { return m_targetP; }
 	Core::f64 getActualP() const { return m_actualP; }
@@ -31,8 +33,9 @@ class Generator : public GridComponent {
 	GeneratorMode getMode() const { return m_mode; }
 	Node *getConnectedNode() const { return m_connectedNode; }
 
-	void applyDroopResponse(Core::f64 freqHz);
-
+	void applyDroopResponse(Core::f64 freqHz, Core::f64 nominalHz);
+	void stepGovernor(Core::f64 dtSec);
+	void stepExciter(Core::f64 dtSec);
 	void adjustSetpointKw(Core::f64 deltaKw) {
 		m_targetP = std::max(0.0, m_targetP + deltaKw);
 		if (m_mode != GeneratorMode::Slack)
@@ -60,6 +63,18 @@ class Generator : public GridComponent {
 	}
 	Core::f64 getMinPower() const { return m_minP; }
 	Core::f64 getMaxPower() const { return m_maxP; }
+	Core::f64 getInertiaH() const { return m_inertia; }
+	void setInertiaH(Core::f64 h) { m_inertia = h; }
+	Core::f64 getActualQKw() const { return m_actualQKw; }
+	void setActualQKw(Core::f64 q) { m_actualQKw = q; }
+	void setPvQClampActive(bool v, Core::f64 qFixedKw) {
+		m_pvQClamp = v;
+		m_qFixedKw = qFixedKw;
+	}
+	bool isPvQClampActive() const { return m_pvQClamp; }
+	Core::f64 getQFixedKw() const { return m_qFixedKw; }
+	Core::f64 getWindArState() const { return m_windAr; }
+	void setWindArState(Core::f64 x) { m_windAr = x; }
 
   private:
 	Node *m_connectedNode;
@@ -74,6 +89,12 @@ class Generator : public GridComponent {
 	Core::f64 m_inertia;
 	Core::f64 m_maxRampRate;
 	Core::f64 m_profileStrength;
+	Core::f64 m_droopTargetKw;
+	Core::f64 m_exciterVpu;
+	Core::f64 m_actualQKw;
+	bool m_pvQClamp;
+	Core::f64 m_qFixedKw;
+	Core::f64 m_windAr;
 };
 
 } // namespace GLStation::Grid
