@@ -49,26 +49,22 @@ class Engine {
 	Core::f64 getAgcIntegralMw() const { return m_agcIntegralMw; }
 	Core::f64 getRocofHzPerS() const { return m_rocofHzPerS; }
 	static SimTickState &simTickState();
-	/*
-	This is FUCKED by default btw
-	plan is to create demo scenario strengths for the imported cities 
-	maybe just limit to a few demo cities until we have a better city builder?
-*/
-	std::vector<std::string> getDemoScenarioNames() const;
-	bool runDemoScenario(const std::string &name);
-	void clearScheduledEvents();
-	void clearEventLog();
 	const std::deque<std::string> &getRecentEvents() const {
 		return m_eventLog;
 	}
 	std::string getLastEvent() const;
 	Core::f64 getFrequencyNadir() const { return m_frequencyNadir; }
+	Core::f64 getFrequencyNadirLifetime() const {
+		return m_frequencyNadirLifetime;
+	}
 	Core::f64 getMaxObservedLineLoadingPercent() const {
 		return m_maxObservedLineLoadingPercent;
 	}
+	Core::f64 getMaxLineLoadingLifetime() const {
+		return m_maxLineLoadingLifetime;
+	}
 	Core::f64 getActiveShedLoadKw() const { return m_activeShedLoadKw; }
 	Core::f64 getReserveMarginKw() const { return m_reserveMarginKw; }
-	bool runDeterministicDemoValidation(std::string &report);
 
   private:
 	void processProtectionRelays();
@@ -98,8 +94,11 @@ class Engine {
 	std::map<Core::u64, Core::u64> m_overloadStartTick;
 	std::map<Core::u64, Core::u64> m_recloseAtTick;
 	std::map<Core::u64, Core::u64> m_recloseCooldownUntil;
+	std::map<Core::u64, Core::u32> m_recloseLockout;
 	Core::f64 m_frequencyNadir;
+	Core::f64 m_frequencyNadirLifetime;
 	Core::f64 m_maxObservedLineLoadingPercent;
+	Core::f64 m_maxLineLoadingLifetime;
 	Core::f64 m_activeShedLoadKw;
 	Core::f64 m_reserveMarginKw;
 	struct UflsStageCfg {

@@ -50,7 +50,7 @@ void Line::setFlowFromSolverPu(std::complex<Core::f64> seriesIpu,
 	m_seriesFlowPu = seriesIpu;
 	if (!m_from || !m_to)
 		return;
-	Core::f64 vllKv = m_from->getBaseVoltage() * std::abs(m_from->getVoltage());
+	Core::f64 vllKv = m_from->getBaseVoltage();
 	Core::f64 sbaseMva = GLStation::Simulation::PowerSolver::sBaseMva();
 	Core::f64 sMva = std::abs(seriesIpu) * sbaseMva;
 	if (vllKv > 1e-9)

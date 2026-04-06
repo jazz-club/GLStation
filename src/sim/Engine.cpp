@@ -50,9 +50,9 @@ Engine::Engine()
 	  m_simStep(std::chrono::milliseconds{1}), m_nominalHz(50.0),
 	  m_lastFreqHz(50.0), m_agcIntegralMw(0.0), m_rocofHzPerS(0.0),
 	  m_systemFrequency(50.0), m_totalGeneration(0), m_totalLoad(0),
-	  m_totalLosses(0), m_frequencyNadir(50.0),
-	  m_maxObservedLineLoadingPercent(0.0), m_activeShedLoadKw(0.0),
-	  m_reserveMarginKw(0.0) {}
+	  m_totalLosses(0), m_frequencyNadir(50.0), m_frequencyNadirLifetime(50.0),
+	  m_maxObservedLineLoadingPercent(0.0), m_maxLineLoadingLifetime(0.0),
+	  m_activeShedLoadKw(0.0), m_reserveMarginKw(0.0) {}
 
 void Engine::pushSimTickState() {
 	g_simTickState.simTime = m_simTime;
@@ -113,10 +113,18 @@ void Engine::initialise() {
 	m_overloadStartTick.clear();
 	m_recloseAtTick.clear();
 	m_recloseCooldownUntil.clear();
+	m_recloseLockout.clear();
 	m_frequencyNadir = m_nominalHz;
+	m_frequencyNadirLifetime = m_nominalHz;
 	m_maxObservedLineLoadingPercent = 0.0;
+	m_maxLineLoadingLifetime = 0.0;
 	m_activeShedLoadKw = 0.0;
 	m_reserveMarginKw = 0.0;
+
+	{
+		std::error_code ec;
+		std::filesystem::remove("event_log.csv", ec);
+	}
 
 	loadUflsFile();
 	for (auto &s : m_uflsStages) {
@@ -288,8 +296,6 @@ void Engine::createDemoGrid() {
 
 	auto lNE = std::make_shared<Grid::Line>("L_NE_220", nGrid.get(),
 											nEast.get(), 1.2, 7.0);
-	auto lNC = std::make_shared<Grid::Line>("L_NC_220_110", nEast.get(),
-											cHub.get(), 1.8, 8.5);
 	auto lCS = std::make_shared<Grid::Line>("L_CS_110", cHub.get(), sHub.get(),
 											2.3, 10.5);
 	auto lCW = std::make_shared<Grid::Line>("L_CW_110", cHub.get(), cWest.get(),
@@ -300,7 +306,6 @@ void Engine::createDemoGrid() {
 											sHub.get(), 2.8, 11.0);
 
 	lNE->setCurrentLimit(1200.0);
-	lNC->setCurrentLimit(900.0);
 	lCS->setCurrentLimit(750.0);
 	lCW->setCurrentLimit(650.0);
 	lSP->setCurrentLimit(600.0);
@@ -331,7 +336,6 @@ void Engine::createDemoGrid() {
 	north->addComponent(nEast);
 	north->addComponent(slack);
 	north->addComponent(lNE);
-	north->addComponent(lNC);
 	north->addComponent(trNorth);
 	north->addComponent(trSouth);
 
@@ -436,21 +440,21 @@ void Engine::tick() {
 		df/dt ∝ (P_gen - P_load - P_loss) / (2HSbase), range is 49-51(?) 
 */
 void Engine::updateFrequencyDynamics() {
-	Core::f64 Hsum = 0.0;
+	Core::f64 totalKE = 0.0;
 	for (auto &sub : m_substations) {
 		for (auto &comp : sub->getComponents()) {
 			if (auto gen = dynamic_cast<Grid::Generator *>(comp.get()))
-				Hsum += std::max(0.1, gen->getInertiaH());
+				totalKE +=
+					std::max(0.1, gen->getInertiaH()) * gen->getMaxPower();
 		}
 	}
-	if (Hsum < 1e-6)
-		Hsum = 5.0;
-	const Core::f64 Sbase = 100000.0;
+	if (totalKE < 1e-6)
+		totalKE = 500000.0;
 	const Core::f64 D = 0.08;
 	Core::f64 dt = std::chrono::duration<Core::f64>(m_simStep).count() / 1000.0;
 
 	Core::f64 imbalance = m_totalGeneration - m_totalLoad - m_totalLosses;
-	Core::f64 df_dt = (imbalance / (2.0 * Hsum * Sbase)) * m_nominalHz -
+	Core::f64 df_dt = (imbalance * m_nominalHz) / (2.0 * totalKE) -
 					  D * (m_systemFrequency - m_nominalHz);
 	m_systemFrequency += df_dt * dt;
 	m_systemFrequency =
@@ -467,15 +471,32 @@ void Engine::applyAGC() {
 	Core::f64 ace = -(m_systemFrequency - m_nominalHz);
 	if (std::abs(ace) < 0.005)
 		return;
+
+	Core::f64 totalCapacity = 0.0;
+	for (auto &sub : m_substations)
+		for (auto &comp : sub->getComponents())
+			if (auto gen = dynamic_cast<Grid::Generator *>(comp.get()))
+				if (gen->getMode() != Grid::GeneratorMode::Slack)
+					totalCapacity += gen->getMaxPower();
+
+	if (totalCapacity < 1e-6)
+		return;
+
 	m_agcIntegralMw += ace * dt;
-	m_agcIntegralMw = std::clamp(m_agcIntegralMw, -5000.0, 5000.0);
-	Core::f64 correction =
-		std::clamp(-ace * 120.0 - m_agcIntegralMw * 4.0, -180.0, 180.0);
+	m_agcIntegralMw = std::clamp(m_agcIntegralMw, -50.0, 50.0);
+
+	Core::f64 Kp = totalCapacity * 0.00005;
+	Core::f64 Ki = totalCapacity * 0.00001;
+	Core::f64 maxCorr = totalCapacity * 0.001;
+	Core::f64 totalCorrection =
+		std::clamp(-ace * Kp - m_agcIntegralMw * Ki, -maxCorr, maxCorr);
+
 	for (auto &sub : m_substations) {
 		for (auto &comp : sub->getComponents()) {
 			if (auto gen = dynamic_cast<Grid::Generator *>(comp.get())) {
 				if (gen->getMode() != Grid::GeneratorMode::Slack) {
-					gen->adjustSetpointKw(correction);
+					Core::f64 share = gen->getMaxPower() / totalCapacity;
+					gen->adjustSetpointKw(totalCorrection * share);
 				}
 			}
 		}
@@ -486,6 +507,7 @@ void Engine::applyAGC() {
 		redundant until scenario manager gets somewhere but breaker logic
 */
 void Engine::processProtectionRelays() {
+	m_maxObservedLineLoadingPercent = 0.0;
 	std::map<Core::u64, Grid::Breaker *> breakerById;
 	std::map<std::string, Grid::Breaker *> breakerByEdge;
 	auto edgeKey = [](Grid::Node *a, Grid::Node *b) -> std::string {
@@ -511,10 +533,13 @@ void Engine::processProtectionRelays() {
 			if (m_recloseCooldownUntil.count(id) &&
 				m_currentTick < m_recloseCooldownUntil[id])
 				continue;
+			if (m_recloseLockout.count(id) && m_recloseLockout[id] >= 3)
+				continue;
 			Grid::Breaker *brk = breakerById[id];
 			if (brk->isOpen()) {
 				brk->setOpen(false);
 				m_recloseCooldownUntil[id] = m_currentTick + 800;
+				m_recloseLockout[id]++;
 				logEvent("[RELAY] Auto-reclosed breaker " + brk->getName());
 			}
 		}
@@ -585,9 +610,14 @@ void Engine::processProtectionRelays() {
 			Grid::Breaker *brk = breakerById[breakerId];
 			if (!brk->isOpen()) {
 				brk->setOpen(true);
-				m_recloseAtTick[breakerId] = m_currentTick + 1500;
-				logEvent("[RELAY] Tripped " + brk->getName() +
-						 ", auto-reclose armed");
+				if (m_recloseLockout[breakerId] < 3) {
+					m_recloseAtTick[breakerId] = m_currentTick + 1500;
+					logEvent("[RELAY] Tripped " + brk->getName() +
+							 ", auto-reclose armed");
+				} else {
+					logEvent("[RELAY] Tripped " + brk->getName() +
+							 ", locked out after 3 reclose attempts");
+				}
 			}
 			it = m_pendingTrips.erase(it);
 		} else {
@@ -795,7 +825,11 @@ std::string Engine::getLastEvent() const {
 }
 
 void Engine::updateKpis() {
-	m_frequencyNadir = std::min(m_frequencyNadir, m_systemFrequency);
+	m_frequencyNadir = m_systemFrequency;
+	m_frequencyNadirLifetime =
+		std::min(m_frequencyNadirLifetime, m_systemFrequency);
+	m_maxLineLoadingLifetime =
+		std::max(m_maxLineLoadingLifetime, m_maxObservedLineLoadingPercent);
 	m_activeShedLoadKw = 0.0;
 	m_reserveMarginKw = 0.0;
 
@@ -812,57 +846,6 @@ void Engine::updateKpis() {
 			}
 		}
 	}
-}
-
-std::vector<std::string> Engine::getDemoScenarioNames() const {
-	return {"breaker_trip", "gen_loss", "freq_stress"};
-}
-
-bool Engine::runDemoScenario(const std::string &name) {
-	std::string k = name;
-	for (auto &c : k)
-		c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-	if (k == "breaker_trip") {
-		getScenarioManager().addEvent(m_currentTick + 500,
-									  [this]() { openBreakerById(22); });
-		return true;
-	}
-	if (k == "gen_loss") {
-		getScenarioManager().addEvent(
-			m_currentTick + 400, [this]() { setGenTargetPById(11, 5000.0); });
-		return true;
-	}
-	if (k == "freq_stress") {
-		getScenarioManager().addEvent(
-			m_currentTick + 200, [this]() { setLoadPowerById(24, 95000.0); });
-		return true;
-	}
-	return false;
-}
-
-void Engine::clearScheduledEvents() { m_scenarioManager.clear(); }
-
-void Engine::clearEventLog() { m_eventLog.clear(); }
-
-bool Engine::runDeterministicDemoValidation(std::string &report) {
-	initialise();
-	clearScheduledEvents();
-	clearEventLog();
-	for (int i = 0; i < 6000; ++i)
-		tick();
-
-	bool okFreq = (m_frequencyNadir >= 47.0 && m_systemFrequency <= 52.0);
-	bool okLoad = (m_totalLoad >= 0.0);
-	bool ok = okFreq && okLoad;
-
-	std::ostringstream os;
-	os << "Validation " << (ok ? "PASS" : "FAIL") << " | nadir=" << std::fixed
-	   << std::setprecision(2) << m_frequencyNadir
-	   << "Hz, f_now=" << m_systemFrequency
-	   << "Hz, maxLine=" << m_maxObservedLineLoadingPercent
-	   << "%, events=" << m_eventLog.size();
-	report = os.str();
-	return ok;
 }
 
 /*

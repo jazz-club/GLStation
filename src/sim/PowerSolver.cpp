@@ -33,6 +33,7 @@ static std::vector<Grid::Transformer *> s_trafoList;
 static size_t s_slackIdx = 0;
 static std::vector<char> s_energisedBus;
 static std::vector<std::vector<Core::f64>> s_Jbuf;
+static Core::f64 s_prevMismatch = 1e30;
 
 Core::f64 PowerSolver::sBaseKw() { return 100000.0; }
 Core::f64 PowerSolver::sBaseMva() { return 100.0; }
@@ -226,6 +227,7 @@ void PowerSolver::solve(
 			return;
 		s_slackIdx = findSlackBusIndex();
 		markIslandsAndEnergizationImpl(substations);
+		s_prevMismatch = 1e30;
 		for (::GLStation::Core::u32 i = 0; i < settings.maxIterations; ++i) {
 			if (runIteration(settings))
 				break;
@@ -355,9 +357,12 @@ void PowerSolver::buildYBus(
 			(std::abs(z_pu) > 1e-9) ? (std::complex<Core::f64>(1.0, 0.0) / z_pu)
 									: 0.0;
 
-		Core::f64 ratio = pri->getBaseVoltage() / sec->getBaseVoltage();
 		Core::f64 ph = trafo->getPhaseShiftDeg() * Core::PI / 180.0;
-		std::complex<Core::f64> a = std::polar(trafo->getTap() / ratio, ph);
+		/* 
+	base voltage ratio is already absorbed
+	a is  off-nominal tap ratio. 
+*/
+		std::complex<Core::f64> a = std::polar(trafo->getTap(), ph);
 		if (std::abs(a) < 1e-9)
 			a = 1.0;
 
@@ -459,9 +464,8 @@ void PowerSolver::syncBranchFlowsFromPUSolution() {
 									 trafo->getReactance() / zbase);
 		std::complex<Core::f64> y =
 			(std::abs(z_pu) > 1e-12) ? (1.0 / z_pu) : 0.0;
-		Core::f64 ratio = pri->getBaseVoltage() / sec->getBaseVoltage();
 		Core::f64 ph = trafo->getPhaseShiftDeg() * Core::PI / 180.0;
-		std::complex<Core::f64> a = std::polar(trafo->getTap() / ratio, ph);
+		std::complex<Core::f64> a = std::polar(trafo->getTap(), ph);
 		std::complex<Core::f64> Ipu = (Vi / a - Vj) * y;
 		Core::f64 sMva = std::abs(Vi * std::conj(Ipu)) * sBaseMva();
 		Core::f64 vll = pri->getBaseVoltage() * std::abs(Vi);
@@ -667,6 +671,12 @@ bool PowerSolver::runIteration(const SolverSettings &settings) {
 	if (maxMismatch < settings.tolerance)
 		return true;
 
+	if (maxMismatch > s_prevMismatch * 2.0 && s_prevMismatch < 1e29) {
+		s_prevMismatch = 1e30;
+		return true;
+	}
+	s_prevMismatch = maxMismatch;
+
 	size_t n_pq = pq_indices.size();
 	size_t n_pv = pv_indices.size();
 	size_t dim = n_pq * 2 + n_pv;
@@ -782,7 +792,7 @@ bool PowerSolver::runIteration(const SolverSettings &settings) {
 		Core::f64 angle =
 			std::arg(s_busNodes[i]->getVoltage()) + dx[theta_map[i]];
 		Core::f64 mag_pu = std::abs(s_busNodes[i]->getVoltage()) + dx[v_map[i]];
-		mag_pu = std::clamp(mag_pu, 0.5, 1.5);
+		mag_pu = std::clamp(mag_pu, 0.85, 1.15);
 		s_busNodes[i]->setVoltage(std::polar(mag_pu, angle));
 	}
 	for (size_t i : pv_indices) {

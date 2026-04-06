@@ -415,9 +415,10 @@ static void printLiveDashboard(const GLStation::Simulation::Engine &engine,
 
 	std::ostringstream l7;
 	l7 << " Nadir " << std::fixed << std::setprecision(2)
-	   << engine.getFrequencyNadir() << " Hz  Max line " << std::setprecision(0)
-	   << engine.getMaxObservedLineLoadingPercent() << "%  Shed "
-	   << std::setprecision(1) << engine.getActiveShedLoadKw() << " kW";
+	   << engine.getFrequencyNadirLifetime() << " Hz  MaxLine "
+	   << std::setprecision(0) << engine.getMaxObservedLineLoadingPercent()
+	   << "%  Shed " << std::setprecision(1) << engine.getActiveShedLoadKw()
+	   << " kW";
 	std::cout << "  |" << pad(l7.str()) << "|\n";
 
 	std::string lastEvent = engine.getLastEvent();
@@ -484,9 +485,6 @@ int main() {
 						  << "open <id>\n"
 						  << "close <id>\n"
 						  << "export [filename]\n"
-						  << "scenario list\n"
-						  << "scenario add <open|close|set_load|set_gen> "
-							 "<tick> <id> [kW]\n"
 						  << "import <name>\n"
 						  << "import demo\n"
 						  << std::endl;
@@ -596,9 +594,10 @@ int main() {
 							  engine.getTotalLoad() - engine.getTotalLosses())
 						  << " kW" << std::endl;
 				std::cout << "Freq Nadir:  " << std::setw(8)
-						  << engine.getFrequencyNadir() << " Hz" << std::endl;
+						  << engine.getFrequencyNadirLifetime() << " Hz"
+						  << std::endl;
 				std::cout << "Max line:    " << std::setw(8)
-						  << engine.getMaxObservedLineLoadingPercent() << " %"
+						  << engine.getMaxLineLoadingLifetime() << " %"
 						  << std::endl;
 				std::cout << "Shed load:   " << std::setw(8)
 						  << engine.getActiveShedLoadKw() << " kW" << std::endl;
@@ -928,120 +927,6 @@ int main() {
 				ss >> filename;
 				engine.exportVoltagesToCSV(filename);
 				std::cout << "Exported to " << filename << std::endl;
-			} else if (cmdNorm == "scenario") {
-				std::string sub;
-				ss >> sub;
-				sub =
-					GLStation::Util::InputHandler::normaliseForComparison(sub);
-				if (sub == "list") {
-					auto ticks =
-						engine.getScenarioManager().getScheduledTicks();
-					if (ticks.empty())
-						std::cout << "No scheduled scenarios." << std::endl;
-					else {
-						std::cout << "Scheduled events:" << std::endl;
-						for (GLStation::Core::u64 t : ticks) {
-							std::cout << "  T+" << t << " (" << t
-									  << " ms sim time)" << std::endl;
-						}
-					}
-				} else if (sub == "add") {
-					std::string type;
-					GLStation::Core::u64 tick, id;
-					ss >> type >> tick >> id;
-					type =
-						GLStation::Util::InputHandler::normaliseForComparison(
-							type);
-					if (type == "open") {
-						engine.getScenarioManager().addEvent(tick, [&engine,
-																	id]() {
-							if (engine.openBreakerById(id))
-								std::cout << "\n[SCENARIO] Breaker " << id
-										  << " opened (e.g. line fault) at T="
-										  << engine.getTickCount() << " ms.\n"
-										  << std::flush;
-							else
-								std::cout << "\n[SCENARIO] Breaker ID " << id
-										  << " not found.\n"
-										  << std::flush;
-						});
-						std::cout << "At T+" << tick << " ms will open breaker "
-								  << id << "." << std::endl;
-					} else if (type == "close") {
-						engine.getScenarioManager().addEvent(tick, [&engine,
-																	id]() {
-							if (engine.closeBreakerById(id))
-								std::cout
-									<< "\n[SCENARIO] Breaker " << id
-									<< " closed at T=" << engine.getTickCount()
-									<< " ms.\n"
-									<< std::flush;
-							else
-								std::cout << "\n[SCENARIO] Breaker ID " << id
-										  << " not found.\n"
-										  << std::flush;
-						});
-						std::cout << "At T+" << tick << "ms will close breaker "
-								  << id << "." << std::endl;
-					} else if (type == "set_load") {
-						double kw;
-						if (ss >> kw) {
-							engine.getScenarioManager().addEvent(
-								tick, [&engine, id, kw]() {
-									if (engine.setLoadPowerById(id, kw))
-										std::cout
-											<< "\n[SCENARIO] Load " << id
-											<< " set to " << kw << " kW at T="
-											<< engine.getTickCount() << " ms.\n"
-											<< std::flush;
-									else
-										std::cout << "\n[SCENARIO] Load ID "
-												  << id << " not found.\n"
-												  << std::flush;
-								});
-							std::cout << "At T+" << tick << " ms will set load "
-									  << id << " to " << kw << " kW."
-									  << std::endl;
-						} else
-							std::cout << "Error: scenario add set_load <tick> "
-										 "<load_id> <kW>"
-									  << std::endl;
-					} else if (type == "set_gen") {
-						double kw;
-						if (ss >> kw) {
-							engine.getScenarioManager().addEvent(
-								tick, [&engine, id, kw]() {
-									if (engine.setGenTargetPById(id, kw))
-										std::cout
-											<< "\n[SCENARIO] Generator " << id
-											<< " setpoint " << kw << " kW at T="
-											<< engine.getTickCount() << " ms.\n"
-											<< std::flush;
-									else
-										std::cout
-											<< "\n[SCENARIO] Generator ID "
-											<< id << " not found.\n"
-											<< std::flush;
-								});
-							std::cout << "At T+" << tick
-									  << " ms will set generator " << id
-									  << " to " << kw << " kW." << std::endl;
-						} else
-							std::cout
-								<< "scenario add set_gen <tick> <gen_id> <kW>"
-								<< std::endl;
-					} else
-						std::cout
-							<< "scenario add <open|close|set_load|set_gen> "
-							   "<tick> <id> [kW]."
-							<< std::endl;
-				} else if (!sub.empty())
-					std::cout << "Use scenario add ... or scenario list."
-							  << std::endl;
-				else
-					std::cout << "Usage: scenario list | scenario add <type> "
-								 "<tick> <id> [kW]"
-							  << std::endl;
 			} else if (cmdNorm == "import") {
 				std::string cityName;
 				std::getline(ss, cityName);

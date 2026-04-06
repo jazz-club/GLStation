@@ -44,6 +44,7 @@ class Load : public GridComponent {
 	Core::f64 m_profileStrength;
 	Core::f64 m_freqSens;
 	Core::f64 m_zipZp;
+	Core::f64 m_profileScale;
 };
 
 } // namespace GLStation::Grid

@@ -95,6 +95,7 @@ class Generator : public GridComponent {
 	bool m_pvQClamp;
 	Core::f64 m_qFixedKw;
 	Core::f64 m_windAr;
+	Core::f64 m_profileScale;
 };
 
 } // namespace GLStation::Grid

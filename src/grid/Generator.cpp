@@ -17,10 +17,10 @@ Generator::Generator(std::string name, Node *connectedNode, GeneratorMode mode)
 	: GridComponent(std::move(name)), m_connectedNode(connectedNode),
 	  m_mode(mode), m_profile(GeneratorProfile::Manual), m_targetP(0.0),
 	  m_actualP(0.0), m_targetV(1.0), m_minQ(-9999.0), m_maxQ(9999.0),
-	  m_minP(0.0), m_maxP(200000.0), m_droop(20.0), m_inertia(5.0),
+	  m_minP(0.0), m_maxP(200000.0), m_droop(0.05), m_inertia(5.0),
 	  m_maxRampRate(500.0), m_profileStrength(1.0), m_droopTargetKw(0.0),
 	  m_exciterVpu(1.0), m_actualQKw(0.0), m_pvQClamp(false), m_qFixedKw(0.0),
-	  m_windAr(0.0) {
+	  m_windAr(0.0), m_profileScale(1.0) {
 	m_droopTargetKw = m_actualP;
 }
 
@@ -38,15 +38,19 @@ void Generator::applyDroopResponse(Core::f64 freqHz, Core::f64 nominalHz) {
 	if (m_mode == GeneratorMode::Slack)
 		return;
 	Core::f64 df = freqHz - nominalHz;
-	Core::f64 dP = -m_droop * 1000.0 * df;
+	Core::f64 dP = -(m_maxP / (m_droop * nominalHz)) * df;
 	m_droopTargetKw = std::clamp(m_targetP + dP, m_minP, m_maxP);
 }
 
 void Generator::stepGovernor(Core::f64 dtSec) {
-	(void)dtSec;
 	if (m_mode == GeneratorMode::Slack)
 		return;
-	Core::f64 alpha = 0.12;
+	/* 
+	x += (target-x) * (1 - exp(-dt/tau))
+	tau ~0.5 s is typical governor mechanical response 
+*/
+	Core::f64 tauGov = 0.5;
+	Core::f64 alpha = 1.0 - std::exp(-dtSec / tauGov);
 	Core::f64 rawDelta = m_droopTargetKw - m_actualP;
 	Core::f64 step =
 		std::clamp(alpha * rawDelta, -m_maxRampRate, m_maxRampRate);
@@ -54,12 +58,15 @@ void Generator::stepGovernor(Core::f64 dtSec) {
 }
 
 void Generator::stepExciter(Core::f64 dtSec) {
-	(void)dtSec;
 	if (m_mode == GeneratorMode::Slack) {
 		m_exciterVpu = m_targetV;
 		return;
 	}
-	Core::f64 beta = 0.08;
+	/* 
+	tau ~0.3 s is typical exciter response 
+*/
+	Core::f64 tauExc = 0.3;
+	Core::f64 beta = 1.0 - std::exp(-dtSec / tauExc);
 	m_exciterVpu += beta * (m_targetV - m_exciterVpu);
 }
 
@@ -68,33 +75,35 @@ void Generator::stepExciter(Core::f64 dtSec) {
         1% per tick at the moment, not sure what a realistic value would
    		actually be need to implement 3 phase generation at some point
 */
-void Generator::tick(Core::Tick) {
+void Generator::tick(Core::Tick currentTick) {
 	if (m_mode == GeneratorMode::Slack)
 		return;
 	/*
 	refer to Generator.hpp
 */
-	Core::f64 profileScale = 1.0;
-	if (m_profile == GeneratorProfile::Wind) {
-		Core::f64 phi = 0.92;
-		Core::f64 noise = Util::Random::range(-0.08, 0.08) * m_profileStrength;
-		m_windAr = phi * m_windAr + noise;
-		m_windAr = std::clamp(m_windAr, -0.35, 0.35);
-		profileScale = std::clamp(
-			0.70 + m_windAr + Util::Random::range(-0.05, 0.05), 0.2, 1.25);
-	} else if (m_profile == GeneratorProfile::Solar) {
-		profileScale =
-			0.78 + Util::Random::range(-0.20, 0.20) * m_profileStrength;
-	} else if (m_profile == GeneratorProfile::Hydro)
-		profileScale =
-			0.92 + Util::Random::range(-0.05, 0.06) * m_profileStrength;
-	else if (m_profile == GeneratorProfile::Thermal)
-		profileScale =
-			1.00 + Util::Random::range(-0.02, 0.03) * m_profileStrength;
-	profileScale = std::clamp(profileScale, 0.2, 1.25);
+	if (currentTick % 1000 == 0) {
+		if (m_profile == GeneratorProfile::Wind) {
+			Core::f64 phi = 0.92;
+			Core::f64 noise =
+				Util::Random::range(-0.08, 0.08) * m_profileStrength;
+			m_windAr = phi * m_windAr + noise;
+			m_windAr = std::clamp(m_windAr, -0.35, 0.35);
+			m_profileScale = std::clamp(
+				0.70 + m_windAr + Util::Random::range(-0.05, 0.05), 0.2, 1.25);
+		} else if (m_profile == GeneratorProfile::Solar) {
+			m_profileScale =
+				0.78 + Util::Random::range(-0.20, 0.20) * m_profileStrength;
+		} else if (m_profile == GeneratorProfile::Hydro)
+			m_profileScale =
+				0.92 + Util::Random::range(-0.05, 0.06) * m_profileStrength;
+		else if (m_profile == GeneratorProfile::Thermal)
+			m_profileScale =
+				1.00 + Util::Random::range(-0.02, 0.03) * m_profileStrength;
+		m_profileScale = std::clamp(m_profileScale, 0.2, 1.25);
+	}
 
 	Core::f64 profiledTarget =
-		std::clamp(m_targetP * profileScale, m_minP, m_maxP);
+		std::clamp(m_targetP * m_profileScale, m_minP, m_maxP);
 	Core::f64 rawDelta = profiledTarget - m_actualP;
 	Core::f64 clampedDelta =
 		std::clamp(rawDelta, -m_maxRampRate, m_maxRampRate);
