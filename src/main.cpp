@@ -17,7 +17,7 @@
 #include <map>
 #include <sstream>
 #include <string>
-#include <typeinfo>
+#include <thread>
 #include <utility>
 #include <vector>
 #ifdef _WIN32
@@ -37,8 +37,8 @@ static const char *ANSI_GREEN = "\033[32m";
 static const char *ANSI_YELLOW = "\033[33m";
 static const char *ANSI_RED = "\033[31m";
 static const char *ANSI_CYAN = "\033[36m";
-static const int DASHBOARD_LINES = 10;
-static const int DASHBOARD_INNER_WIDTH = 53;
+static const int DASHBOARD_LINES = 12;
+static const int DASHBOARD_INNER_WIDTH = 75;
 
 /*
 		Temporary TUI bandaid, theres a nicer way to do this while preventing dashboard flickering
@@ -357,105 +357,206 @@ static void printLiveDashboard(const GLStation::Simulation::Engine &engine,
 		return o.str();
 	};
 
-	auto pad = [](const std::string &line) {
-		int vis = visibleLength(line);
-		if (vis < DASHBOARD_INNER_WIDTH)
-			return line + std::string(DASHBOARD_INNER_WIDTH - vis, ' ');
-		return line;
-	};
-
 	if (moveUp && s_ansiEnabled)
 		std::cout << "\033[" << DASHBOARD_LINES << "A";
 
-	const std::string borderTop =
-		"+------------------ Live Simulation ------------------+";
-	const std::string borderBottom =
-		"+" + std::string(DASHBOARD_INNER_WIDTH, '-') + "+";
+	auto fixLen = [](std::string s, int len) {
+		int vis = visibleLength(s);
+		if (vis < len)
+			return s + std::string(len - vis, ' ');
+		if (vis > len) {
+			return s.substr(0, len);
+		}
+		return s;
+	};
 
-	std::ostringstream l1;
-	l1 << " T " << engine.getTickCount() << " ms  "
-	   << (s_ansiEnabled ? freqColour : "") << std::fixed
+	auto drawBar = [](double val, double maxVal) {
+		if (maxVal < 1e-6)
+			maxVal = 1.0;
+		double ratio = val / maxVal;
+		if (ratio > 1.0)
+			ratio = 1.0;
+		if (ratio < 0.0)
+			ratio = 0.0;
+		int width = 11;
+		int filled = static_cast<int>(std::round(ratio * width));
+		std::string bg = s_ansiEnabled ? "\033[90m-\033[0m" : "-";
+		std::string fg = s_ansiEnabled ? "\033[36m#\033[0m" : "#";
+		std::string res = "[";
+		for (int i = 0; i < width; ++i)
+			res += (i < filled) ? fg : bg;
+		res += "]";
+		return res;
+	};
+
+	double maxW = engine.getTotalGeneration() > engine.getTotalLoad()
+					  ? engine.getTotalGeneration()
+					  : engine.getTotalLoad();
+	if (maxW < 1.0)
+		maxW = 1.0;
+
+	std::string topBorder = "+" + std::string(DASHBOARD_INNER_WIDTH, '-') + "+";
+	std::string midBorder = "+---------------+---------------------------------"
+							"-+------------------------+";
+
+	std::string cCol = s_ansiEnabled ? ANSI_CYAN : "";
+	std::string cRes = s_ansiEnabled ? ANSI_RESET : "";
+	std::string bL = "  " + cCol + "|" + cRes;
+	std::string bM = cCol + "|" + cRes;
+	std::string bR = cCol + "|\n" + cRes;
+
+	std::cout << cCol << "  " << topBorder << cRes << "\n";
+
+	GLStation::Core::u64 t = engine.getTickCount();
+	GLStation::Core::u64 hrs = (t / 1000) / 3600;
+	GLStation::Core::u64 mins = ((t / 1000) % 3600) / 60;
+	GLStation::Core::u64 secs = (t / 1000) % 60;
+	std::ostringstream timeStr;
+	timeStr << std::setfill('0') << std::setw(2) << hrs << "h "
+			<< std::setfill('0') << std::setw(2) << mins << "m "
+			<< std::setfill('0') << std::setw(2) << secs << "s";
+
+	std::ostringstream leftHdr;
+	leftHdr << (s_ansiEnabled ? ANSI_CYAN : "") << " Live Grid Simulation"
+			<< (s_ansiEnabled ? ANSI_RESET : "");
+	std::ostringstream rightHdr;
+	rightHdr << timeStr.str() << " | T:" << engine.getTickCount() << " ";
+	int spaces = DASHBOARD_INNER_WIDTH - visibleLength(leftHdr.str()) -
+				 visibleLength(rightHdr.str());
+	if (spaces < 0)
+		spaces = 0;
+	std::cout << bL << leftHdr.str() << std::string(spaces, ' ')
+			  << rightHdr.str() << bR;
+	std::cout << cCol << "  " << midBorder << "\n" << cRes;
+
+	const char *vColor = ANSI_GREEN;
+	if (vMinPu < 0.90 || vMaxPu > 1.10)
+		vColor = ANSI_RED;
+	else if (vMinPu < 0.95 || vMaxPu > 1.05)
+		vColor = ANSI_YELLOW;
+
+	const char *lColor = ANSI_GREEN;
+	if (worstLinePct >= 100.0)
+		lColor = ANSI_RED;
+	else if (worstLinePct >= 80.0)
+		lColor = ANSI_YELLOW;
+
+	std::ostringstream f1, p1, h1;
+	f1 << "  " << (s_ansiEnabled ? freqColour : "") << std::fixed
 	   << std::setprecision(2) << freq << " Hz"
 	   << (s_ansiEnabled ? ANSI_RESET : "");
-	std::cout << (s_ansiEnabled ? ANSI_CYAN : "") << "  " << borderTop
-			  << (s_ansiEnabled ? ANSI_RESET : "") << "\n";
-	std::cout << "  |" << pad(l1.str()) << "|\n";
+	p1 << "  " << (s_ansiEnabled ? ANSI_GREEN : "")
+	   << "[+] Gen:  " << std::setw(7) << fmtKw(engine.getTotalGeneration())
+	   << (s_ansiEnabled ? ANSI_RESET : "") << " "
+	   << drawBar(engine.getTotalGeneration(), maxW);
+	h1 << "  " << (s_ansiEnabled ? vColor : "") << "V: " << std::fixed
+	   << std::setprecision(2) << vMinPu << "-" << vMaxPu << " pu"
+	   << (s_ansiEnabled ? ANSI_RESET : "");
+	std::cout << bL << fixLen(f1.str(), 15) << bM << fixLen(p1.str(), 34) << bM
+			  << fixLen(h1.str(), 24) << bR;
 
-	std::ostringstream l2;
-	l2 << " Gen " << fmtKw(engine.getTotalGeneration()) << "  Load "
-	   << fmtKw(engine.getTotalLoad()) << "  Loss "
-	   << fmtKw(engine.getTotalLosses()) << " kW";
-	std::cout << "  |" << pad(l2.str()) << "|\n";
-
-	std::ostringstream l3;
-	l3 << " V " << std::fixed << std::setprecision(2) << vMinPu << "-" << vMaxPu
-	   << " pu";
-	if (!nameAtMinV.empty() && vMinPu < 0.98)
-		l3 << " (low: " << nameAtMinV << ")";
-	std::cout << "  |" << pad(l3.str()) << "|\n";
-
-	std::ostringstream l4;
-	l4 << " angle " << std::fixed << std::setprecision(1) << angMinDeg << ".."
+	std::ostringstream f2, p2, h2;
+	f2 << "  Nadir: " << std::fixed << std::setprecision(2)
+	   << engine.getFrequencyNadirLifetime();
+	p2 << "  " << (s_ansiEnabled ? ANSI_YELLOW : "")
+	   << "[-] Load: " << std::setw(7) << fmtKw(engine.getTotalLoad())
+	   << (s_ansiEnabled ? ANSI_RESET : "") << " "
+	   << drawBar(engine.getTotalLoad(), maxW);
+	h2 << "  ang: " << std::fixed << std::setprecision(1) << angMinDeg << ".."
 	   << angMaxDeg << " deg";
-	std::cout << "  |" << pad(l4.str()) << "|\n";
+	std::cout << bL << fixLen(f2.str(), 15) << bM << fixLen(p2.str(), 34) << bM
+			  << fixLen(h2.str(), 24) << bR;
 
-	std::ostringstream l5;
-	l5 << " line " << std::fixed << std::setprecision(0) << worstLinePct << "%";
-	if (!nameWorstLine.empty())
-		l5 << " " << nameWorstLine;
-	if (worstLinePct > 100.0)
-		l5 << " (overload)";
-	std::cout << "  |" << pad(l5.str()) << "|\n";
+	std::ostringstream f3, p3, h3;
+	f3 << "  L " << std::fixed << std::setprecision(1) << fMin << " H " << fMax;
+	p3 << "  " << (s_ansiEnabled ? ANSI_RED : "")
+	   << "[-] Loss: " << std::setw(7) << fmtKw(engine.getTotalLosses())
+	   << (s_ansiEnabled ? ANSI_RESET : "") << " "
+	   << drawBar(engine.getTotalLosses(), maxW);
 
-	std::ostringstream l6;
-	for (int i = 0; i < barWidth; ++i)
-		l6 << (i == pos ? (s_ansiEnabled ? "\033[1m*\033[0m" : "*") : "-");
-	l6 << " " << fMin << "-" << fMax << " Hz";
-	std::cout << "  |" << pad(l6.str()) << "|\n";
+	double absMin = std::abs(angMinDeg);
+	double absMax = std::abs(angMaxDeg);
+	double maxAbsAng = (absMin > absMax) ? absMin : absMax;
+	int angPos = static_cast<int>(maxAbsAng * 8.0 / 2.0);
+	if (angPos < 0)
+		angPos = 0;
+	if (angPos > 7)
+		angPos = 7;
+	std::string angSpark = "[-";
+	for (int i = 0; i < 8; ++i)
+		angSpark +=
+			(i == angPos ? (s_ansiEnabled ? "\033[1m*\033[0m" : "*") : "-");
+	angSpark += "]";
+	h3 << "  " << angSpark;
 
-	std::ostringstream l7;
-	l7 << " Nadir " << std::fixed << std::setprecision(2)
-	   << engine.getFrequencyNadirLifetime() << " Hz  MaxLine "
-	   << std::setprecision(0) << engine.getMaxObservedLineLoadingPercent()
-	   << "%  Shed " << std::setprecision(1) << engine.getActiveShedLoadKw()
-	   << " kW";
-	std::cout << "  |" << pad(l7.str()) << "|\n";
+	std::cout << bL << fixLen(f3.str(), 15) << bM << fixLen(p3.str(), 34) << bM
+			  << fixLen(h3.str(), 24) << bR;
+
+	std::ostringstream f4, p4, h4;
+	std::string fSpark = "[-";
+	int mappedPos = static_cast<int>(pos * 8.0 / barWidth);
+	for (int i = 0; i < 8; ++i)
+		fSpark +=
+			(i == mappedPos ? (s_ansiEnabled ? "\033[1m*\033[0m" : "*") : "-");
+	fSpark += "]";
+	f4 << "  " << fSpark;
+	double imb = engine.getTotalGeneration() - engine.getTotalLoad() -
+				 engine.getTotalLosses();
+	const char *imbColor = (std::abs(imb) > 5.0) ? ANSI_YELLOW : ANSI_RESET;
+	p4 << "  " << (s_ansiEnabled ? imbColor : "")
+	   << "[=] Imb:  " << std::setw(7) << fmtKw(imb)
+	   << (s_ansiEnabled ? ANSI_RESET : "");
+	std::string lineInfo = nameWorstLine.empty() ? "None" : nameWorstLine;
+	if (lineInfo.size() > 10)
+		lineInfo = lineInfo.substr(0, 10);
+	h4 << "  Line: " << lineInfo;
+	std::cout << bL << fixLen(f4.str(), 15) << bM << fixLen(p4.str(), 34) << bM
+			  << fixLen(h4.str(), 24) << bR;
+
+	std::ostringstream f5, p5, h5;
+	f5 << " ";
+	p5 << " ";
+	h5 << "  " << (s_ansiEnabled ? lColor : "") << std::fixed
+	   << std::setprecision(1) << worstLinePct << "% "
+	   << (s_ansiEnabled ? ANSI_RESET : "") << drawBar(worstLinePct, 100.0)
+	   << (worstLinePct > 100.0 ? "!" : "");
+	std::cout << bL << fixLen(f5.str(), 15) << bM << fixLen(p5.str(), 34) << bM
+			  << fixLen(h5.str(), 24) << bR;
+
+	std::cout << cCol << "  " << midBorder << "\n" << cRes;
 
 	std::string lastEvent = engine.getLastEvent();
-	const int maxEventLen = DASHBOARD_INNER_WIDTH - 7;
-	if (static_cast<int>(lastEvent.size()) > maxEventLen) {
-		if (maxEventLen > 3)
-			lastEvent =
-				lastEvent.substr(0, static_cast<size_t>(maxEventLen - 3)) +
-				"...";
-		else
-			lastEvent = lastEvent.substr(0, static_cast<size_t>(maxEventLen));
-	}
-	std::ostringstream l8;
-	l8 << " Last: " << lastEvent;
-	std::cout << "  |" << pad(l8.str()) << "|\n";
+	if (lastEvent.empty())
+		lastEvent = "Simulation nominal.";
+	if (static_cast<int>(lastEvent.size()) > DASHBOARD_INNER_WIDTH - 6)
+		lastEvent = lastEvent.substr(0, DASHBOARD_INNER_WIDTH - 9) + "...";
+	std::cout << bL << fixLen("  Log:", DASHBOARD_INNER_WIDTH) << bR;
+	std::cout << bL << fixLen("  " + lastEvent, DASHBOARD_INNER_WIDTH) << bR;
 
-	std::cout << "  " << borderBottom << "\n" << std::flush;
+	std::cout << cCol << "  " << topBorder << "\n" << cRes << std::flush;
 }
 
 } // namespace
 
 int main() {
+	enableAnsiIfPossible();
 	try {
-		std::cout << "\n=============================================="
-				  << std::endl;
-		std::cout << "   GLStation" << std::endl;
-		std::cout << "==============================================\n"
-				  << std::endl;
+		std::string cyn = s_ansiEnabled ? ANSI_CYAN : "";
+		std::string res = s_ansiEnabled ? ANSI_RESET : "";
+
+		std::cout << "\n"
+				  << cyn << "   GLStation\n"
+				  << res << "   Type 'help' for commands.\n\n";
 
 		GLStation::Simulation::Engine engine;
 		engine.initialise();
 
 		std::string line;
 		while (true) {
-			std::cout << "[" << engine.getTickCount() << " ms] > "
-					  << std::flush;
-			if (!std::getline(std::cin, line))
+			std::cout << cyn << "glstation" << res << "@"
+					  << engine.getTickCount() << "ms > " << std::flush;
+			line = GLStation::Util::InputHandler::readLineWithHistory();
+			if (line == "exit" && !std::cin.good())
 				break;
 			line = GLStation::Util::InputHandler::trim(line);
 			if (line.empty())
@@ -470,23 +571,33 @@ int main() {
 			if (cmdNorm == "exit")
 				break;
 			else if (cmdNorm == "help") {
-				std::cout << "\nCommands\n"
-						  << "==========\n\n"
-						  << "exit\n"
-						  << "tick [count]\n"
-						  << "run <time>\n"
-						  << "run inf\n"
-						  << "status\n"
-						  << "find <query>\n"
-						  << "tree\n"
-						  << "list <gen|load|line|trafo|breaker>\n"
-						  << "inspect <id>\n"
-						  << "set <id> <param> <value>\n"
-						  << "open <id>\n"
-						  << "close <id>\n"
-						  << "export [filename]\n"
-						  << "import <name>\n"
-						  << "import demo\n"
+				std::string cyn = s_ansiEnabled ? ANSI_CYAN : "";
+				std::string res = s_ansiEnabled ? ANSI_RESET : "";
+				std::string yel = s_ansiEnabled ? ANSI_YELLOW : "";
+				std::string grn = s_ansiEnabled ? ANSI_GREEN : "";
+				std::cout << "\n"
+						  << cyn << "--- Commands ---" << res << "\n\n"
+						  << grn << "  exit" << res << "\n"
+						  << grn << "  tick " << yel << "[count]" << res << "\n"
+						  << grn << "  run " << yel << "<time> [realtime]"
+						  << res << "\n"
+						  << grn << "  run inf " << yel << "[realtime]" << res
+						  << "\n"
+						  << grn << "  status" << res << "\n"
+						  << grn << "  find " << yel << "<query>" << res << "\n"
+						  << grn << "  tree" << res << "\n"
+						  << grn << "  list " << yel
+						  << "<gen|load|line|trafo|breaker>" << res << "\n"
+						  << grn << "  inspect " << yel << "<id>" << res << "\n"
+						  << grn << "  set " << yel << "<id> <param> <value>"
+						  << res << "\n"
+						  << grn << "  open " << yel << "<id>" << res << "\n"
+						  << grn << "  close " << yel << "<id>" << res << "\n"
+						  << grn << "  export " << yel << "[filename]" << res
+						  << "\n"
+						  << grn << "  import " << yel << "<name>" << res
+						  << "\n"
+						  << grn << "  import demo" << res << "\n"
 						  << std::endl;
 			} else if (cmdNorm == "tick") {
 				std::string arg;
@@ -500,9 +611,19 @@ int main() {
 				std::string arg;
 				std::string extra;
 				ss >> arg;
+				bool realtime = false;
 				if (ss >> extra) {
-					std::cout << "Usage: run <time> | run inf." << std::endl;
-					continue;
+					std::string extNorm =
+						GLStation::Util::InputHandler::normaliseForComparison(
+							extra);
+					if (extNorm == "realtime") {
+						realtime = true;
+					} else {
+						std::cout << "Usage: run <time> [realtime] | run inf "
+									 "[realtime]"
+								  << std::endl;
+						continue;
+					}
 				}
 				if (arg.empty()) {
 					std::cout << "Usage: run <time> | run inf." << std::endl;
@@ -525,6 +646,7 @@ int main() {
 					this is safe, i think
 */
 					for (;;) {
+						auto tStart = std::chrono::steady_clock::now();
 						for (GLStation::Core::u64 i = 0;
 							 i < RUN_DASH_INTERVAL_TICKS; ++i) {
 							if (shouldStopRun())
@@ -534,14 +656,28 @@ int main() {
 						printLiveDashboard(engine, !first, true,
 										   engine.getTickCount(), 0);
 						first = false;
+						if (realtime) {
+							auto tEnd = std::chrono::steady_clock::now();
+							auto elapsed =
+								std::chrono::duration_cast<
+									std::chrono::milliseconds>(tEnd - tStart)
+									.count();
+							if (elapsed < static_cast<long long>(
+											  RUN_DASH_INTERVAL_TICKS)) {
+								std::this_thread::sleep_for(
+									std::chrono::milliseconds(
+										RUN_DASH_INTERVAL_TICKS - elapsed));
+							}
+						}
 					}
 				done_inf:
-					printLiveDashboard(engine, false, false,
+					printLiveDashboard(engine, !first, false,
 									   engine.getTickCount(), 0);
 				} else {
 					GLStation::Core::u64 durationTicks = 0;
 					if (!parseRunDurationTicks(arg, durationTicks)) {
-						std::cout << "Usage: run <time> | run inf."
+						std::cout << "Usage: run <time> [realtime] | run inf "
+									 "[realtime]"
 								  << std::endl;
 						continue;
 					}
@@ -554,6 +690,7 @@ int main() {
 					bool first = true;
 					GLStation::Core::u64 done = 0;
 					for (; done < durationTicks;) {
+						auto tStart = std::chrono::steady_clock::now();
 						GLStation::Core::u64 chunk = std::min(
 							RUN_DASH_INTERVAL_TICKS, durationTicks - done);
 						for (GLStation::Core::u64 i = 0; i < chunk; ++i) {
@@ -567,13 +704,28 @@ int main() {
 						printLiveDashboard(engine, (done > 0 && !first), true,
 										   done, durationTicks);
 						first = false;
+						if (realtime && chunk > 0) {
+							auto tEnd = std::chrono::steady_clock::now();
+							auto elapsed =
+								std::chrono::duration_cast<
+									std::chrono::milliseconds>(tEnd - tStart)
+									.count();
+							if (elapsed < static_cast<long long>(chunk)) {
+								std::this_thread::sleep_for(
+									std::chrono::milliseconds(chunk - elapsed));
+							}
+						}
 					}
 
 					std::cout << "\nDone. Ran " << done << " ticks."
 							  << std::endl;
 				}
 			} else if (cmdNorm == "status") {
-				std::cout << "\n--- SYSTEM OVERVIEW ---" << std::endl;
+				std::string cyn = s_ansiEnabled ? ANSI_CYAN : "";
+				std::string res = s_ansiEnabled ? ANSI_RESET : "";
+				std::cout << "\n"
+						  << cyn << "--- System Overview ---" << res
+						  << std::endl;
 				std::cout << "Frequency:   " << std::setw(8) << std::fixed
 						  << std::setprecision(3) << engine.getSystemFrequency()
 						  << " Hz" << std::endl;
@@ -603,7 +755,8 @@ int main() {
 						  << engine.getActiveShedLoadKw() << " kW" << std::endl;
 				std::cout << "Reserve:     " << std::setw(8)
 						  << engine.getReserveMarginKw() << " kW" << std::endl;
-				std::cout << "-----------------------" << std::endl;
+				std::cout << cyn << "-----------------------" << res
+						  << std::endl;
 				for (const auto &sub : engine.getSubstations()) {
 					std::cout << sub->toString() << std::endl;
 				}
@@ -611,7 +764,11 @@ int main() {
 				std::string query;
 				ss >> query;
 				query = GLStation::Util::InputHandler::trim(query);
-				std::cout << "\nSearching for '" << query << "':" << std::endl;
+				std::string cyn = s_ansiEnabled ? ANSI_CYAN : "";
+				std::string res = s_ansiEnabled ? ANSI_RESET : "";
+				std::cout << "\n"
+						  << cyn << "--- Search: '" << query << "' ---" << res
+						  << std::endl;
 				bool found = false;
 				std::vector<std::pair<GLStation::Core::u64, std::string>>
 					partial;
@@ -648,9 +805,15 @@ int main() {
 					}
 				}
 			} else if (cmdNorm == "tree") {
-				std::cout << "\n=== GRID TOPOLOGY ===" << std::endl;
+				std::string cyn = s_ansiEnabled ? ANSI_CYAN : "";
+				std::string res = s_ansiEnabled ? ANSI_RESET : "";
+				std::string yel = s_ansiEnabled ? ANSI_YELLOW : "";
+				std::cout << "\n"
+						  << cyn << "--- Grid Topology ---" << res << std::endl;
 				for (const auto &sub : engine.getSubstations()) {
-					std::cout << "\n[Substation: " << sub->getName() << "]"
+					std::cout << "\n"
+							  << yel << "[Substation:" << res << " "
+							  << sub->getName() << yel << "]" << res
 							  << std::endl;
 
 					std::map<GLStation::Grid::Node *,
@@ -693,10 +856,12 @@ int main() {
 					}
 
 					for (auto const &[node, components] : nodeMap) {
-						std::cout << "  |-- " << node->getName() << " [Node "
-								  << node->getId() << "]" << std::endl;
+						std::cout << cyn << "  |-- " << res << node->getName()
+								  << " [Node " << node->getId() << "]"
+								  << std::endl;
 						for (auto *comp : components) {
-							std::cout << "  |   +-- [ID: " << std::setw(2)
+							std::cout << cyn << "  |   +-- " << res
+									  << "[ID: " << std::setw(2)
 									  << comp->getId() << "] "
 									  << comp->getName();
 							if (auto b =
@@ -708,7 +873,7 @@ int main() {
 						}
 					}
 				}
-				std::cout << "\n==========================" << std::endl;
+				std::cout << std::endl;
 			} else if (cmdNorm == "list") {
 				std::string type;
 				ss >> type;
@@ -719,8 +884,11 @@ int main() {
 								 "<gen|load|line|trafo|breaker>"
 							  << std::endl;
 				} else {
-					std::cout << "\nListing [" << type
-							  << "] components:" << std::endl;
+					std::string cyn = s_ansiEnabled ? ANSI_CYAN : "";
+					std::string res = s_ansiEnabled ? ANSI_RESET : "";
+					std::cout << "\n"
+							  << cyn << "--- List [" << type << "] ---" << res
+							  << std::endl;
 					bool validType =
 						(type == "gen" || type == "load" || type == "line" ||
 						 type == "trafo" || type == "breaker");
@@ -772,8 +940,13 @@ int main() {
 					for (const auto &sub : engine.getSubstations()) {
 						for (const auto &comp : sub->getComponents()) {
 							if (comp->getId() == id) {
-								std::cout << "\n--- Component Inspect: "
-										  << comp->getName() << " ---"
+								std::string cyn =
+									s_ansiEnabled ? ANSI_CYAN : "";
+								std::string res =
+									s_ansiEnabled ? ANSI_RESET : "";
+								std::cout << "\n"
+										  << cyn << "--- Component Inspect: "
+										  << comp->getName() << " ---" << res
 										  << std::endl;
 								std::cout
 									<< "Type:     " << typeid(*comp).name()

@@ -123,7 +123,7 @@ void Engine::initialise() {
 
 	{
 		std::error_code ec;
-		std::filesystem::remove("event_log.csv", ec);
+		std::filesystem::remove("gls.csv", ec);
 	}
 
 	loadUflsFile();
@@ -433,6 +433,15 @@ void Engine::tick() {
 	}
 	processProtectionRelays();
 	updateKpis();
+
+	if (m_currentTick > 0 && m_currentTick % 25000 == 0) {
+		std::ostringstream os;
+		os << "Grid Envelope Normal: " << std::fixed << std::setprecision(2)
+		   << (m_totalGeneration / 1000.0) << "MW Generation, "
+		   << (m_totalLoad / 1000.0) << "MW Demand. Frequency "
+		   << m_systemFrequency << "Hz.";
+		logEvent(os.str());
+	}
 }
 
 /*
@@ -491,6 +500,14 @@ void Engine::applyAGC() {
 	Core::f64 totalCorrection =
 		std::clamp(-ace * Kp - m_agcIntegralMw * Ki, -maxCorr, maxCorr);
 
+	if (std::abs(totalCorrection) > 500.0 && m_currentTick % 8000 == 0) {
+		std::ostringstream os;
+		os << "[AGC] Dispatched secondary governor adjustment: " << std::fixed
+		   << std::setprecision(1) << (totalCorrection > 0 ? "+" : "")
+		   << totalCorrection << "kW";
+		logEvent(os.str());
+	}
+
 	for (auto &sub : m_substations) {
 		for (auto &comp : sub->getComponents()) {
 			if (auto gen = dynamic_cast<Grid::Generator *>(comp.get())) {
@@ -540,7 +557,8 @@ void Engine::processProtectionRelays() {
 				brk->setOpen(false);
 				m_recloseCooldownUntil[id] = m_currentTick + 800;
 				m_recloseLockout[id]++;
-				logEvent("[RELAY] Auto-reclosed breaker " + brk->getName());
+				logEvent("[RELAY] Auto-reclosed breaker " + brk->getName(),
+						 LogCategory::Critical);
 			}
 		}
 	}
@@ -588,7 +606,7 @@ void Engine::processProtectionRelays() {
 						os << "[RELAY] " << line->getName() << " overload ("
 						   << std::fixed << std::setprecision(1) << loadingPct
 						   << "%), trip timer started";
-						logEvent(os.str());
+						logEvent(os.str(), LogCategory::Critical);
 					}
 					Core::f64 ratio = iMag / lim;
 					Core::f64 inv = 400.0 / std::max(ratio / 1.05 - 1.0, 0.08);
@@ -613,10 +631,12 @@ void Engine::processProtectionRelays() {
 				if (m_recloseLockout[breakerId] < 3) {
 					m_recloseAtTick[breakerId] = m_currentTick + 1500;
 					logEvent("[RELAY] Tripped " + brk->getName() +
-							 ", auto-reclose armed");
+								 ", auto-reclose armed",
+							 LogCategory::Critical);
 				} else {
 					logEvent("[RELAY] Tripped " + brk->getName() +
-							 ", locked out after 3 reclose attempts");
+								 ", locked out after 3 reclose attempts",
+							 LogCategory::Critical);
 				}
 			}
 			it = m_pendingTrips.erase(it);
@@ -658,7 +678,7 @@ void Engine::processProtectionRelays() {
 				os << "[UFLS] " << std::fixed << std::setprecision(2)
 				   << m_systemFrequency << " Hz <= " << stage.freqThresholdHz
 				   << " Hz. Shedding " << nShed << " loads.";
-				logEvent(os.str());
+				logEvent(os.str(), LogCategory::Critical);
 
 				for (size_t i = 0; i < nShed && i < activLoads.size(); ++i)
 					activLoads[i]->shed();
@@ -682,7 +702,8 @@ void Engine::processProtectionRelays() {
 				}
 			}
 			if (restored > 0)
-				logEvent("[UFLS] Frequency recovered, restoring staged load.");
+				logEvent("[UFLS] Frequency recovered, restoring staged load.",
+						 LogCategory::Critical);
 		}
 	}
 }
@@ -732,17 +753,19 @@ bool Engine::setGenTargetPById(Core::u64 id, Core::f64 powerKw) {
 }
 
 void Engine::exportVoltagesToCSV(const std::string &filename) {
+	std::string target = (filename == "results.csv" || filename == "gls.csv")
+							 ? "gls.csv"
+							 : filename;
 	bool needsHeader =
-		std::ifstream(filename).peek() == std::ifstream::traits_type::eof();
-	std::ofstream file(filename, std::ios::app);
+		std::ifstream(target).peek() == std::ifstream::traits_type::eof();
+	std::ofstream file(target, std::ios::app);
 	if (!file.is_open())
 		return;
 
 	if (needsHeader) {
-		Util::CSVHandler::writeRow(
-			file, {"Tick", "Substation", "Node", "Voltage_Mag", "Voltage_Ang",
-				   "Frequency_Hz", "ActiveShed_kW", "MaxLineLoadPct",
-				   "ReserveMargin_kW"});
+		Util::CSVHandler::writeRow(file,
+								   {"Tick", "Category", "Message", "Node",
+									"V_Mag", "V_Ang", "Freq_Hz", "Reserve_kW"});
 	}
 
 	for (const auto &sub : m_substations) {
@@ -750,13 +773,12 @@ void Engine::exportVoltagesToCSV(const std::string &filename) {
 			if (auto node = dynamic_cast<Grid::Node *>(comp.get())) {
 				std::complex<Core::f64> voltage = node->getVoltage();
 				Util::CSVHandler::writeRow(
-					file, {std::to_string(m_currentTick), sub->getName(),
-						   node->getName(), std::to_string(std::abs(voltage)),
-						   std::to_string(std::arg(voltage)),
-						   std::to_string(m_systemFrequency),
-						   std::to_string(m_activeShedLoadKw),
-						   std::to_string(m_maxObservedLineLoadingPercent),
-						   std::to_string(m_reserveMarginKw)});
+					file,
+					{std::to_string(m_currentTick), "RESULT", "Voltage Export",
+					 node->getName(), std::to_string(std::abs(voltage)),
+					 std::to_string(std::arg(voltage)),
+					 std::to_string(m_systemFrequency),
+					 std::to_string(m_reserveMarginKw)});
 			}
 		}
 	}
@@ -791,31 +813,44 @@ void Engine::configureDemoProfiles() {
 	}
 }
 
-void Engine::logEvent(const std::string &event) {
+void Engine::logEvent(const std::string &event, LogCategory cat) {
 	std::ostringstream os;
 	os << "T+" << m_currentTick << "ms " << event;
 	m_eventLog.push_back(os.str());
 	if (m_eventLog.size() > 24)
 		m_eventLog.pop_front();
-	appendEventToCsv(m_currentTick, event);
+	appendToGlsCsv(m_currentTick, cat, event);
 }
 
-void Engine::appendEventToCsv(Core::Tick tick, const std::string &event) {
-	static const std::string kEventCsv = "event_log.csv";
+void Engine::appendToGlsCsv(Core::Tick tick, LogCategory cat,
+							const std::string &message) {
+	static const std::string kMasterCsv = "gls.csv";
 	bool needsHeader = false;
 	{
-		std::ifstream probe(kEventCsv);
+		std::ifstream probe(kMasterCsv);
 		needsHeader =
 			!probe.good() || probe.peek() == std::ifstream::traits_type::eof();
 	}
 
-	std::ofstream file(kEventCsv, std::ios::app);
+	std::ofstream file(kMasterCsv, std::ios::app);
 	if (!file.is_open())
 		return;
 
 	if (needsHeader)
-		Util::CSVHandler::writeRow(file, {"Tick", "Event"});
-	Util::CSVHandler::writeRow(file, {std::to_string(tick), event});
+		Util::CSVHandler::writeRow(file,
+								   {"Tick", "Category", "Message", "Node",
+									"V_Mag", "V_Ang", "Freq_Hz", "Reserve_kW"});
+
+	std::string catStr = "INFO";
+	if (cat == LogCategory::Critical)
+		catStr = "CRITICAL";
+	else if (cat == LogCategory::Result)
+		catStr = "RESULT";
+
+	if (cat != LogCategory::Result) {
+		Util::CSVHandler::writeRow(
+			file, {std::to_string(tick), catStr, message, "", "", "", "", ""});
+	}
 }
 
 std::string Engine::getLastEvent() const {
@@ -823,7 +858,9 @@ std::string Engine::getLastEvent() const {
 		return "none";
 	return m_eventLog.back();
 }
-
+/*
+	reset every tick not partial rebuild
+*/
 void Engine::updateKpis() {
 	m_frequencyNadir = m_systemFrequency;
 	m_frequencyNadirLifetime =

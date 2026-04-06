@@ -71,8 +71,11 @@ class Engine {
 	void updateFrequencyDynamics();
 	void applyAGC();
 	void configureDemoProfiles();
-	void logEvent(const std::string &event);
-	void appendEventToCsv(Core::Tick tick, const std::string &event);
+	enum class LogCategory { Info, Critical, Result };
+	void logEvent(const std::string &event,
+				  LogCategory cat = LogCategory::Info);
+	void appendToGlsCsv(Core::Tick tick, LogCategory cat,
+						const std::string &message);
 	void updateKpis();
 	void loadUflsFile();
 	void pushSimTickState();

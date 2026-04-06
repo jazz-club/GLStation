@@ -9,6 +9,7 @@ class InputHandler {
 	static std::string trim(const std::string &s);
 	static std::string normaliseForComparison(const std::string &s);
 	static std::string urlEncode(const std::string &s);
+	static std::string readLineWithHistory();
 };
 
 } // namespace GLStation::Util
