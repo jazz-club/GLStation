@@ -1,8 +1,9 @@
-#include "io/CSVHandler.hpp"
-#include "io/GridHandler.hpp"
-#include "io/InputHandler.hpp"
-#include "io/JsonHandler.hpp"
 #include "io/NetworkClient.hpp"
+#include "io/handlers/CSVHandler.hpp"
+#include "io/handlers/GridHandler.hpp"
+#include "io/handlers/InputHandler.hpp"
+#include "io/handlers/JsonHandler.hpp"
+#include "log/Logger.hpp"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -56,13 +57,13 @@ std::string GridHandler::osmWayName(const OSMWay &way,
 	return fallbackPrefix + "_" + std::to_string(way.id);
 }
 
-bool GridHandler::importCity(const std::string &cityName) {
-	std::cout << "Importing grid for: " << cityName << "..." << std::endl;
+GLStation::Log::Status GridHandler::importCity(const std::string &cityName) {
+	Log::Logger::info("Importing grid for: " + cityName + "...");
 
 	std::string json = fetchOsmData(cityName);
 	if (json.empty()) {
-		std::cerr << "Error: OSM API." << std::endl;
-		return false;
+		return {Log::ErrorCode::NetworkError,
+				"Failed to connect to OSM API or empty response."};
 	}
 
 	Util::JsonHandler::Value root = Util::JsonHandler::parse(json);
@@ -112,17 +113,16 @@ bool GridHandler::importCity(const std::string &cityName) {
 	}
 
 	if (substations.empty()) {
-		std::cerr
-			<< "No substations found for that area. The name may not match "
-			   "an OSM dataset, there is missing powergrid data."
-			<< std::endl;
-		return false;
+		return {Log::ErrorCode::NotFound,
+				"No substations found for that area. The name may not match an "
+				"OSM dataset, or there is missing powergrid data."};
 	}
 
-	std::cout << "Found " << substations.size() << " substations and "
-			  << lines.size() << " transmission lines." << std::endl;
+	Log::Logger::info("Found " + std::to_string(substations.size()) +
+					  " substations and " + std::to_string(lines.size()) +
+					  " transmission lines.");
 	generateGridFile(cityName, substations, lines, allNodes);
-	return true;
+	return {Log::ErrorCode::Success, "Grid updated successfully."};
 }
 
 std::string GridHandler::fetchOsmData(const std::string &cityName) {
@@ -232,7 +232,6 @@ void GridHandler::generateGridFile(
 	}
 
 	file.close();
-	std::cout << "Grid Updated." << std::endl;
 }
 
 std::vector<std::string> GridHandler::getSuggestions(const std::string &query) {

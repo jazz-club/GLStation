@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/Types.hpp"
+#include "util/Types.hpp"
 #include <string>
 
 namespace GLStation::Grid {

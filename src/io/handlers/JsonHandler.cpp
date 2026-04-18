@@ -1,4 +1,4 @@
-#include "io/JsonHandler.hpp"
+#include "io/handlers/JsonHandler.hpp"
 #include <cctype>
 
 namespace GLStation::Util {

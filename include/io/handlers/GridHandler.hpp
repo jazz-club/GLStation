@@ -1,6 +1,7 @@
 #pragma once
 
-#include "core/Types.hpp"
+#include "log/Result.hpp"
+#include "util/Types.hpp"
 #include <cstddef>
 #include <map>
 #include <string>
@@ -10,7 +11,7 @@ namespace GLStation::Simulation {
 
 class GridHandler {
   public:
-	static bool importCity(const std::string &cityName);
+	static GLStation::Log::Status importCity(const std::string &cityName);
 	static std::vector<std::string> getSuggestions(const std::string &query);
 
   private:

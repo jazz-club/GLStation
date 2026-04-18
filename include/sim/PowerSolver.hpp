@@ -1,8 +1,8 @@
 #pragma once
 
-#include "core/Types.hpp"
 #include "grid/Substation.hpp"
 #include "sim/SparseMatrix.hpp"
+#include "util/Types.hpp"
 #include <complex>
 #include <memory>
 #include <vector>

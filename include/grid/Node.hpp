@@ -1,7 +1,7 @@
 #pragma once
 
-#include "core/Types.hpp"
 #include "grid/GridComponent.hpp"
+#include "util/Types.hpp"
 #include <complex>
 
 namespace GLStation::Grid {

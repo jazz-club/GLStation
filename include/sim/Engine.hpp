@@ -10,6 +10,8 @@
 #include <string>
 #include <vector>
 
+#include "log/Diagnostics.hpp"
+
 namespace GLStation::Simulation {
 
 struct SimTickState {
@@ -49,9 +51,6 @@ class Engine {
 	Core::f64 getAgcIntegralMw() const { return m_agcIntegralMw; }
 	Core::f64 getRocofHzPerS() const { return m_rocofHzPerS; }
 	static SimTickState &simTickState();
-	const std::deque<std::string> &getRecentEvents() const {
-		return m_eventLog;
-	}
 	std::string getLastEvent() const;
 	Core::f64 getFrequencyNadir() const { return m_frequencyNadir; }
 	Core::f64 getFrequencyNadirLifetime() const {
@@ -71,13 +70,11 @@ class Engine {
 	void updateFrequencyDynamics();
 	void applyAGC();
 	void configureDemoProfiles();
-	enum class LogCategory { Info, Critical, Result };
 	void logEvent(const std::string &event,
-				  LogCategory cat = LogCategory::Info);
-	void appendToGlsCsv(Core::Tick tick, LogCategory cat,
-						const std::string &message);
+				  Log::Severity sev = Log::Severity::Info);
 	void updateKpis();
-	void loadUflsFile();
+	void initialiseUflsStages();
+	void processUFLS();
 	void pushSimTickState();
 	Core::Tick m_currentTick;
 	std::chrono::milliseconds m_simTime;
@@ -92,7 +89,6 @@ class Engine {
 	Core::f64 m_totalGeneration;
 	Core::f64 m_totalLoad;
 	Core::f64 m_totalLosses;
-	std::deque<std::string> m_eventLog;
 	std::map<Core::u64, Core::u64> m_pendingTrips;
 	std::map<Core::u64, Core::u64> m_overloadStartTick;
 	std::map<Core::u64, Core::u64> m_recloseAtTick;
