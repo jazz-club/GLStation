@@ -73,14 +73,14 @@ void Generator::stepExciter(Core::f64 dtSec) {
 /*
         droop rate for moving single phase generation towards target deramp
         1% per tick at the moment, not sure what a realistic value would
-   		actually be need to implement 3 phase generation at some point
+   		actually be
 */
 void Generator::tick(Core::Tick currentTick) {
 	if (m_mode == GeneratorMode::Slack)
 		return;
 	/*
 	refer to Generator.hpp
-*/
+	*/
 	if (currentTick % 1000 == 0) {
 		if (m_profile == GeneratorProfile::Wind) {
 			Core::f64 phi = 0.92;

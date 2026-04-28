@@ -15,17 +15,6 @@ static SimTickState g_simTickState{};
 
 SimTickState &Engine::simTickState() { return g_simTickState; }
 
-/*
-		load shreading thresholds
-		erik you probably understand 
-*/
-
-/*
-		sources;
-		https://www.aemo.com.au/energy-systems/electricity/wholesale-electricity-market-wem/system-operations/under-frequency-load-shedding
-		https://www.sciencedirect.com/science/article/pii/S1364032123001508
-*/
-
 Engine::Engine()
 	: m_currentTick(0), m_simTime(std::chrono::milliseconds{0}),
 	  m_simStep(std::chrono::milliseconds{1}), m_nominalHz(50.0),

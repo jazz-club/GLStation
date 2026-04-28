@@ -16,6 +16,15 @@ void Engine::initialiseUflsStages() {
 	m_uflsStages.push_back({48.0, 0.30, 0, 1e9, false, false, 0});
 }
 
+/*
+		load shreading thresholds
+		erik you probably understand 
+
+		sources;
+		https://www.aemo.com.au/energy-systems/electricity/wholesale-electricity-market-wem/system-operations/under-frequency-load-shedding
+		https://www.sciencedirect.com/science/article/pii/S1364032123001508
+*/
+
 void Engine::processUFLS() {
 	for (auto &stage : m_uflsStages) {
 		bool rocoOk =
