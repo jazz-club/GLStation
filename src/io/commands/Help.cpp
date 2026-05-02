@@ -10,9 +10,8 @@ void Help::execute() {
 	std::string yel = UI::isAnsiEnabled() ? UI::ANSI_YELLOW : "";
 	std::string grn = UI::isAnsiEnabled() ? UI::ANSI_GREEN : "";
 	std::cout << "\n"
-			  << cyn << "--- Commands ---" << res << "\n\n"
+			  << cyn << "Commands:" << res << "\n\n"
 			  << grn << "  exit" << res << "\n"
-
 			  << grn << "  run " << yel << "<time> [realtime]" << res << "\n"
 			  << grn << "  run inf " << yel << "[realtime]" << res << "\n"
 			  << grn << "  status" << res << "\n"
@@ -25,8 +24,6 @@ void Help::execute() {
 			  << grn << "  open " << yel << "<id>" << res << "\n"
 			  << grn << "  close " << yel << "<id>" << res << "\n"
 			  << grn << "  export " << yel << "[filename]" << res << "\n"
-			  << grn << "  import " << yel << "<name>" << res << "\n"
-			  << grn << "  import demo" << res << "\n"
 			  << std::endl;
 }
 

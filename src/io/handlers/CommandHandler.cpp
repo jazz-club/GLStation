@@ -1,16 +1,14 @@
-#include "io/commands/Help.hpp"
-#include "io/handlers/CommandHandler.hpp"
-
 #include "io/commands/Breaker.hpp"
 #include "io/commands/Export.hpp"
 #include "io/commands/Find.hpp"
-#include "io/commands/Import.hpp"
+#include "io/commands/Help.hpp"
 #include "io/commands/Inspect.hpp"
 #include "io/commands/List.hpp"
 #include "io/commands/Run.hpp"
 #include "io/commands/Set.hpp"
 #include "io/commands/Status.hpp"
 #include "io/commands/Tree.hpp"
+#include "io/handlers/CommandHandler.hpp"
 #include "io/handlers/InputHandler.hpp"
 #include "sim/Engine.hpp"
 #include "ui/Terminal.hpp"
@@ -87,10 +85,6 @@ void runLoop(Simulation::Engine &engine) {
 			std::string filename = "gls.csv";
 			ss >> filename;
 			Commands::Export::execute(engine, filename);
-		} else if (cmdNorm == "import") {
-			std::string cityName;
-			std::getline(ss, cityName);
-			Commands::Import::execute(engine, cityName);
 		} else {
 			std::cout << "Error: Unknown Command '" << cmd << "'." << std::endl;
 		}
