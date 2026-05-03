@@ -33,6 +33,12 @@ class Engine {
 	getSubstations() const {
 		return m_substations;
 	}
+	void addSubstation(std::shared_ptr<Grid::Substation> sub) {
+		m_substations.push_back(sub);
+	}
+	void clearSubstations() { m_substations.clear(); }
+	void saveGrid(const std::string &filename) const;
+	void loadGrid(const std::string &filename);
 	void createDemoGrid();
 	Core::Tick getTickCount() const { return m_currentTick; }
 	std::chrono::milliseconds getSimTime() const { return m_simTime; }

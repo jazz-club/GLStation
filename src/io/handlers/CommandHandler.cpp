@@ -1,3 +1,4 @@
+#include "grid/builder/Builder.hpp"
 #include "io/commands/Breaker.hpp"
 #include "io/commands/Export.hpp"
 #include "io/commands/Find.hpp"
@@ -41,7 +42,8 @@ void runLoop(Simulation::Engine &engine) {
 			break;
 		} else if (cmdNorm == "help") {
 			Commands::Help::execute();
-
+		} else if (cmdNorm == "build" || cmdNorm == "edit") {
+			Grid::Builder::Builder::runLoop(engine);
 		} else if (cmdNorm == "run") {
 			std::string arg;
 			std::string extra;
