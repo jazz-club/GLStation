@@ -1,12 +1,14 @@
 # GLStation
 
+![GLStation](https://i.imgur.com/jNFGttm.png)
+
 GLStation is a power grid simulator and builder. It has utilities for procedural generation of power grids (currently based on population using generalised averages for consumption).
 
 It features generation and consumption profiles based on real world power sources such as Thermal, Solar, Wind, etc and consumption based on Residential and Commercial Zones. It has built-in auto balancing using a custom implementation of PowerSolver.
 
 The runtime binary has a builder mode that can be accessed using the `build` command. The `help` command can be used in both modes to view a list of currently applicable commands.
 
-GLStation has built state serialisation using a save/load system that exports using a normalised CSV format.
+GLStation has built-in state serialisation using a save/load system that exports using a normalised CSV format.
 
 ## Build Instructions
 
