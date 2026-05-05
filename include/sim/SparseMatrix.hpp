@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <vector>
 
-namespace GLStation::Util {
+namespace GLStation::Simulation {
 
 template <typename T> class SparseMatrix {
   public:
@@ -55,4 +55,4 @@ template <typename T> class SparseMatrix {
 	std::vector<size_t> m_rowPtr;
 };
 
-} // namespace GLStation::Util
+} // namespace GLStation::Simulation

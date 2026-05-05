@@ -6,10 +6,10 @@
 #include "grid/Shunt.hpp"
 #include "grid/Substation.hpp"
 #include "grid/Transformer.hpp"
-#include "grid/builder/Builder.hpp"
-#include "io/commands/builder/Validate.hpp"
+#include "io/commands/BuilderCommands.hpp"
+#include "log/Logger.hpp"
 #include "sim/Engine.hpp"
-#include "ui/Terminal.hpp"
+#include "ui/Theme.hpp"
 #include <iostream>
 #include <map>
 #include <vector>
@@ -23,25 +23,21 @@ class GridValidator {
 	explicit GridValidator(Simulation::Engine &simEngine) : engine(simEngine) {}
 
 	void run() {
-		std::string red = UI::isAnsiEnabled() ? UI::ANSI_RED : "";
-		std::string yel = UI::isAnsiEnabled() ? UI::ANSI_YELLOW : "";
-		std::string grn = UI::isAnsiEnabled() ? UI::ANSI_GREEN : "";
-		std::string cyn = UI::isAnsiEnabled() ? UI::ANSI_CYAN : "";
-		std::string res = UI::isAnsiEnabled() ? UI::ANSI_RESET : "";
-
-		std::cout << "\n" << cyn << "Grid Validation:" << res << "\n";
+		std::cout << "\n"
+				  << UI::Theme::cyan()
+				  << "Grid Validation:" << UI::Theme::reset() << "\n";
 
 		scanComponents();
 		printComponentCounts();
 
 		if (allNodes.empty()) {
-			std::cout << yel << "[WARN] Grid is empty.\n" << res;
+			Log::Logger::warn("Grid is empty.");
 			return;
 		}
 
-		checkSlackBus(red, res);
-		checkGenerationCapacity(red, grn, res);
-		checkTopology(red, grn, res);
+		checkSlackBus();
+		checkGenerationCapacity();
+		checkTopology();
 	}
 
   private:
@@ -96,33 +92,34 @@ class GridValidator {
 				  << "\n\n";
 	}
 
-	void checkSlackBus(const std::string &red, const std::string &res) {
+	void checkSlackBus() {
 		if (slackCount == 0) {
-			std::cout << red << "[FAIL] No Slack bus found." << res << "\n";
+			std::cout << UI::Theme::red() << "[FAIL] No Slack bus found."
+					  << UI::Theme::reset() << "\n";
 		} else if (slackCount > 1) {
-			std::cout << red << "[FAIL] " << slackCount
-					  << "Slack bus duplication error." << res << "\n";
+			std::cout << UI::Theme::red() << "[FAIL] " << slackCount
+					  << "Slack bus duplication error." << UI::Theme::reset()
+					  << "\n";
 		}
 	}
 
-	void checkGenerationCapacity(const std::string &red, const std::string &grn,
-								 const std::string &res) {
+	void checkGenerationCapacity() {
 		if (totalGen < totalLoad) {
-			std::cout << red << "[FAIL] Total Generation Capacity (" << totalGen
+			std::cout << UI::Theme::red()
+					  << "[FAIL] Total Generation Capacity (" << totalGen
 					  << " kW) is less than Total Load (" << totalLoad
-					  << " kW)." << res << "\n";
+					  << " kW)." << UI::Theme::reset() << "\n";
 		} else {
 			double margin =
 				totalLoad > 0 ? ((totalGen / totalLoad) - 1.0) * 100.0 : 0.0;
-			std::cout << grn
+			std::cout << UI::Theme::green()
 					  << "[PASS] Generation capacity balanced. [Sprain] Margin "
 						 "for error: "
-					  << margin << "%" << res << "\n";
+					  << margin << "%" << UI::Theme::reset() << "\n";
 		}
 	}
 
-	void checkTopology(const std::string &red, const std::string &grn,
-					   const std::string &res) {
+	void checkTopology() {
 		std::map<Grid::Node *, bool> visited;
 		std::vector<Grid::Node *> q;
 
@@ -141,21 +138,25 @@ class GridValidator {
 		}
 
 		if (q.size() < allNodes.size()) {
-			std::cout << red << "[FAIL] Grid contains islanded nodes"
+			std::cout << UI::Theme::red()
+					  << "[FAIL] Grid contains islanded nodes"
 					  << (allNodes.size() - q.size())
-					  << " nodes are unreachable." << res << "\n\n";
+					  << " nodes are unreachable." << UI::Theme::reset()
+					  << "\n\n";
 		} else {
-			std::cout << grn
+			std::cout << UI::Theme::green()
 					  << "[PASS] Topology is fully connected. No disconnected "
 						 "nodes detected."
-					  << res << "\n\n";
+					  << UI::Theme::reset() << "\n\n";
 		}
 	}
 };
 
 } // namespace
 
-void Validate::execute(Simulation::Engine &engine, std::stringstream &ss) {
+void cmdValidate(Simulation::Engine &engine,
+				 const std::vector<std::string> &args) {
+	(void)args;
 	GridValidator validator(engine);
 	validator.run();
 }

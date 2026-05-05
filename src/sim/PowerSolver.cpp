@@ -22,8 +22,8 @@ namespace GLStation::Simulation {
 /*
 		rebuilds admittance matrix upon update, kinda redundant atm
 */
-std::unique_ptr<Util::SparseMatrix<std::complex<Core::f64>>>
-	PowerSolver::s_yBus = nullptr;
+std::unique_ptr<SparseMatrix<std::complex<Core::f64>>> PowerSolver::s_yBus =
+	nullptr;
 static bool s_busDiscard = true;
 static std::vector<Grid::Node *> s_busNodes;
 static std::vector<Grid::Load *> s_loadList;
@@ -427,8 +427,8 @@ void PowerSolver::buildYBus(
 		rowPtr.push_back(values.size());
 	}
 
-	s_yBus = std::make_unique<Util::SparseMatrix<std::complex<Core::f64>>>(
-		busCount, busCount);
+	s_yBus = std::make_unique<SparseMatrix<std::complex<Core::f64>>>(busCount,
+																	 busCount);
 	s_yBus->setDirect(values, colIndex, rowPtr);
 }
 

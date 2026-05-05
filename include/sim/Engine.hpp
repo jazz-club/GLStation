@@ -1,6 +1,8 @@
 #pragma once
 
 #include "grid/Substation.hpp"
+#include "log/Diagnostics.hpp"
+#include "log/Result.hpp"
 #include "sim/ScenarioManager.hpp"
 #include <chrono>
 #include <deque>
@@ -9,8 +11,6 @@
 #include <memory>
 #include <string>
 #include <vector>
-
-#include "log/Diagnostics.hpp"
 
 namespace GLStation::Simulation {
 
@@ -37,9 +37,10 @@ class Engine {
 		m_substations.push_back(sub);
 	}
 	void clearSubstations() { m_substations.clear(); }
-	void saveGrid(const std::string &filename) const;
-	void loadGrid(const std::string &filename);
+	Log::Status saveGrid(const std::string &filename) const;
+	Log::Status loadGrid(const std::string &filename);
 	void createDemoGrid();
+	Grid::GridComponent *findComponentById(Core::u64 id) const;
 	Core::Tick getTickCount() const { return m_currentTick; }
 	std::chrono::milliseconds getSimTime() const { return m_simTime; }
 	ScenarioManager &getScenarioManager() { return m_scenarioManager; }

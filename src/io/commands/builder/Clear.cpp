@@ -1,15 +1,16 @@
 #include "grid/builder/Builder.hpp"
-#include "io/commands/builder/Clear.hpp"
+#include "io/commands/BuilderCommands.hpp"
+#include "log/Logger.hpp"
 #include "sim/Engine.hpp"
-#include <iostream>
 
 namespace GLStation::IO::Commands::Builder {
 
-void Clear::execute(Simulation::Engine &engine, std::stringstream &ss) {
-	(void)ss;
+void cmdClear(Simulation::Engine &engine,
+			  const std::vector<std::string> &args) {
+	(void)args;
 	engine.clearSubstations();
-	Grid::Builder::Builder::setActiveSubstation(nullptr);
-	std::cout << "Cleared all substations.\n";
+	Grid::Builder::BuilderShell::setActiveSubstation(nullptr);
+	Log::Logger::info("Cleared all substations.");
 }
 
 } // namespace GLStation::IO::Commands::Builder

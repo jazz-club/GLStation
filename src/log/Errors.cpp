@@ -16,9 +16,7 @@ void Errors::save(Core::Tick tick, Severity sev, const std::string &msg) {
 		return;
 
 	if (needsHeader) {
-		Util::CSVHandler::writeRow(file,
-								   {"Tick", "Category", "Message", "Node",
-									"V_Mag", "V_Ang", "Freq_Hz", "Reserve_kW"});
+		IO::CSVHandler::writeRow(file, kEventCsvHeader);
 	}
 
 	std::string catStr = "INFO";
@@ -37,7 +35,7 @@ void Errors::save(Core::Tick tick, Severity sev, const std::string &msg) {
 	}
 
 	if (sev != Severity::Result) {
-		Util::CSVHandler::writeRow(
+		IO::CSVHandler::writeRow(
 			file, {std::to_string(tick), catStr, msg, "", "", "", "", ""});
 	}
 }

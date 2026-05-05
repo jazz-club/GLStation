@@ -4,6 +4,7 @@
 #include "sim/Engine.hpp"
 #include "ui/Dashboard.hpp"
 #include "ui/Terminal.hpp"
+#include "ui/Theme.hpp"
 #include <cmath>
 #include <complex>
 #include <deque>
@@ -82,13 +83,13 @@ void printLiveDashboard(const Simulation::Engine &engine, bool moveUp,
 	if (vMaxPu < 0.01)
 		vMaxPu = 1.0;
 
-	const char *freqColour = ANSI_RESET;
+	std::string freqColour = Theme::reset();
 	if (freq >= nominalHz - 0.2 && freq <= nominalHz + 0.2)
-		freqColour = ANSI_GREEN;
+		freqColour = Theme::green();
 	else if (freq >= nominalHz - 0.5 && freq <= nominalHz + 0.5)
-		freqColour = ANSI_YELLOW;
+		freqColour = Theme::yellow();
 	else
-		freqColour = ANSI_RED;
+		freqColour = Theme::red();
 
 	const int barWidth = 22;
 	const double fMin = nominalHz - 1.0, fMax = nominalHz + 1.0;
@@ -137,7 +138,7 @@ void printLiveDashboard(const Simulation::Engine &engine, bool moveUp,
 	std::ostringstream out;
 
 	if (moveUp && isAnsiEnabled()) {
-		out << "\033[?25l"; // hide cursor
+		out << "\033[?25l";
 		out << "\033[" << DASHBOARD_LINES << "A";
 	}
 
@@ -180,8 +181,8 @@ void printLiveDashboard(const Simulation::Engine &engine, bool moveUp,
 	std::string midBorder = "+---------------+---------------------------------"
 							"-+------------------------+";
 
-	std::string cCol = isAnsiEnabled() ? ANSI_CYAN : "";
-	std::string cRes = isAnsiEnabled() ? ANSI_RESET : "";
+	std::string cCol = Theme::cyan();
+	std::string cRes = Theme::reset();
 	std::string bL = "  " + cCol + "|" + cRes;
 	std::string bM = cCol + "|" + cRes;
 	std::string bR = cCol + "|\n" + cRes;
@@ -198,8 +199,7 @@ void printLiveDashboard(const Simulation::Engine &engine, bool moveUp,
 			<< std::setfill('0') << std::setw(2) << secs << "s";
 
 	std::ostringstream leftHdr;
-	leftHdr << (isAnsiEnabled() ? ANSI_CYAN : "") << " Live Grid Simulation"
-			<< (isAnsiEnabled() ? ANSI_RESET : "");
+	leftHdr << Theme::cyan() << " Live Grid Simulation" << Theme::reset();
 	std::ostringstream rightHdr;
 	rightHdr << timeStr.str() << " | T:" << engine.getTickCount() << " ";
 	int spaces = DASHBOARD_INNER_WIDTH - visibleLength(leftHdr.str()) -
@@ -210,38 +210,34 @@ void printLiveDashboard(const Simulation::Engine &engine, bool moveUp,
 		<< bR;
 	out << cCol << "  " << midBorder << "\n" << cRes;
 
-	const char *vColor = ANSI_GREEN;
+	std::string vColor = Theme::green();
 	if (vMinPu < 0.90 || vMaxPu > 1.10)
-		vColor = ANSI_RED;
+		vColor = Theme::red();
 	else if (vMinPu < 0.95 || vMaxPu > 1.05)
-		vColor = ANSI_YELLOW;
+		vColor = Theme::yellow();
 
-	const char *lColor = ANSI_GREEN;
+	std::string lColor = Theme::green();
 	if (worstLinePct >= 100.0)
-		lColor = ANSI_RED;
+		lColor = Theme::red();
 	else if (worstLinePct >= 80.0)
-		lColor = ANSI_YELLOW;
+		lColor = Theme::yellow();
 
 	std::ostringstream f1, p1, h1;
-	f1 << "  " << (isAnsiEnabled() ? freqColour : "") << std::fixed
-	   << std::setprecision(2) << freq << " Hz"
-	   << (isAnsiEnabled() ? ANSI_RESET : "");
-	p1 << "  " << (isAnsiEnabled() ? ANSI_GREEN : "")
-	   << "[+] Gen:  " << std::setw(7) << fmtKw(engine.getTotalGeneration())
-	   << (isAnsiEnabled() ? ANSI_RESET : "") << " "
+	f1 << "  " << freqColour << std::fixed << std::setprecision(2) << freq
+	   << " Hz" << Theme::reset();
+	p1 << "  " << Theme::green() << "[+] Gen:  " << std::setw(7)
+	   << fmtKw(engine.getTotalGeneration()) << Theme::reset() << " "
 	   << drawBar(engine.getTotalGeneration(), maxW);
-	h1 << "  " << (isAnsiEnabled() ? vColor : "") << "V: " << std::fixed
-	   << std::setprecision(2) << vMinPu << "-" << vMaxPu << " pu"
-	   << (isAnsiEnabled() ? ANSI_RESET : "");
+	h1 << "  " << vColor << "V: " << std::fixed << std::setprecision(2)
+	   << vMinPu << "-" << vMaxPu << " pu" << Theme::reset();
 	out << bL << fixLen(f1.str(), 15) << bM << fixLen(p1.str(), 34) << bM
 		<< fixLen(h1.str(), 24) << bR;
 
 	std::ostringstream f2, p2, h2;
 	f2 << "  Nadir: " << std::fixed << std::setprecision(2)
 	   << engine.getFrequencyNadirLifetime();
-	p2 << "  " << (isAnsiEnabled() ? ANSI_YELLOW : "")
-	   << "[-] Load: " << std::setw(7) << fmtKw(engine.getTotalLoad())
-	   << (isAnsiEnabled() ? ANSI_RESET : "") << " "
+	p2 << "  " << Theme::yellow() << "[-] Load: " << std::setw(7)
+	   << fmtKw(engine.getTotalLoad()) << Theme::reset() << " "
 	   << drawBar(engine.getTotalLoad(), maxW);
 	h2 << "  ang: " << std::fixed << std::setprecision(1) << angMinDeg << ".."
 	   << angMaxDeg << " deg";
@@ -250,9 +246,8 @@ void printLiveDashboard(const Simulation::Engine &engine, bool moveUp,
 
 	std::ostringstream f3, p3, h3;
 	f3 << "  L " << std::fixed << std::setprecision(1) << fMin << " H " << fMax;
-	p3 << "  " << (isAnsiEnabled() ? ANSI_RED : "")
-	   << "[-] Loss: " << std::setw(7) << fmtKw(engine.getTotalLosses())
-	   << (isAnsiEnabled() ? ANSI_RESET : "") << " "
+	p3 << "  " << Theme::red() << "[-] Loss: " << std::setw(7)
+	   << fmtKw(engine.getTotalLosses()) << Theme::reset() << " "
 	   << drawBar(engine.getTotalLosses(), maxW);
 
 	double absMin = std::abs(angMinDeg);
@@ -283,10 +278,10 @@ void printLiveDashboard(const Simulation::Engine &engine, bool moveUp,
 	f4 << "  " << fSpark;
 	double imb = engine.getTotalGeneration() - engine.getTotalLoad() -
 				 engine.getTotalLosses();
-	const char *imbColor = (std::abs(imb) > 5.0) ? ANSI_YELLOW : ANSI_RESET;
-	p4 << "  " << (isAnsiEnabled() ? imbColor : "")
-	   << "[=] Imb:  " << std::setw(7) << fmtKw(imb)
-	   << (isAnsiEnabled() ? ANSI_RESET : "");
+	std::string imbColor =
+		(std::abs(imb) > 5.0) ? Theme::yellow() : Theme::reset();
+	p4 << "  " << imbColor << "[=] Imb:  " << std::setw(7) << fmtKw(imb)
+	   << Theme::reset();
 	std::string lineInfo = nameWorstLine.empty() ? "None" : nameWorstLine;
 	if (lineInfo.size() > 10)
 		lineInfo = lineInfo.substr(0, 10);
@@ -297,9 +292,8 @@ void printLiveDashboard(const Simulation::Engine &engine, bool moveUp,
 	std::ostringstream f5, p5, h5;
 	f5 << " ";
 	p5 << " ";
-	h5 << "  " << (isAnsiEnabled() ? lColor : "") << std::fixed
-	   << std::setprecision(1) << worstLinePct << "% "
-	   << (isAnsiEnabled() ? ANSI_RESET : "") << drawBar(worstLinePct, 100.0)
+	h5 << "  " << lColor << std::fixed << std::setprecision(1) << worstLinePct
+	   << "% " << Theme::reset() << drawBar(worstLinePct, 100.0)
 	   << (worstLinePct > 100.0 ? "!" : "");
 	out << bL << fixLen(f5.str(), 15) << bM << fixLen(p5.str(), 34) << bM
 		<< fixLen(h5.str(), 24) << bR;

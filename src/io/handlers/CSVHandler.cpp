@@ -1,7 +1,7 @@
 #include "io/handlers/CSVHandler.hpp"
 #include <cctype>
 
-namespace GLStation::Util {
+namespace GLStation::IO {
 
 std::string CSVHandler::trimField(std::string s) {
 	while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back())))
@@ -11,22 +11,43 @@ std::string CSVHandler::trimField(std::string s) {
 	return s;
 }
 
+bool CSVHandler::isCommentOrEmpty(const std::string &line) {
+	for (char c : line) {
+		if (std::isspace(static_cast<unsigned char>(c)))
+			continue;
+		return c == '#';
+	}
+	return true;
+}
+
 std::vector<std::string> CSVHandler::parseCSVLine(const std::string &line) {
 	std::vector<std::string> out;
 	std::string field;
+	bool inQuotes = false;
+
 	for (size_t i = 0; i < line.size(); ++i) {
-		if (line[i] == '"') {
-			field.clear();
-			++i;
-			while (i < line.size() && line[i] != '"') {
-				field += line[i++];
+		char c = line[i];
+
+		if (inQuotes) {
+			if (c == '"') {
+				if (i + 1 < line.size() && line[i + 1] == '"') {
+					field += '"';
+					++i;
+				} else {
+					inQuotes = false;
+				}
+			} else {
+				field += c;
 			}
-			out.push_back(field);
-		} else if (line[i] == ',') {
-			out.push_back(trimField(field));
-			field.clear();
 		} else {
-			field += line[i];
+			if (c == '"') {
+				inQuotes = true;
+			} else if (c == ',') {
+				out.push_back(trimField(field));
+				field.clear();
+			} else {
+				field += c;
+			}
 		}
 	}
 	out.push_back(trimField(field));
@@ -62,4 +83,4 @@ void CSVHandler::writeRow(std::ostream &out,
 	out << '\n';
 }
 
-} // namespace GLStation::Util
+} // namespace GLStation::IO

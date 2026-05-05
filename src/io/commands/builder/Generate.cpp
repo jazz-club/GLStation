@@ -7,20 +7,17 @@
 #include "grid/Substation.hpp"
 #include "grid/Transformer.hpp"
 #include "grid/builder/Builder.hpp"
-#include "io/commands/builder/Generate.hpp"
+#include "io/commands/BuilderCommands.hpp"
+#include "io/handlers/InputHandler.hpp"
+#include "log/Logger.hpp"
 #include "sim/Engine.hpp"
-#include "ui/Terminal.hpp"
+#include "ui/Theme.hpp"
 #include "util/Random.hpp"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
 
 namespace GLStation::IO::Commands::Builder {
-
-static double parseDouble(std::string s) {
-	s.erase(std::remove(s.begin(), s.end(), ','), s.end());
-	return std::stod(s);
-}
 
 namespace {
 
@@ -49,10 +46,9 @@ class ProceduralGridBuilder {
 		buildBackboneRing();
 		buildCrossTies();
 
-		std::string cyn = UI::isAnsiEnabled() ? UI::ANSI_CYAN : "";
-		std::string res = UI::isAnsiEnabled() ? UI::ANSI_RESET : "";
-		std::cout << cyn << "Grid generated with " << numZones << " zones and "
-				  << totalDistributedKw << " demand." << res << "\n";
+		std::cout << UI::Theme::cyan() << "Grid generated with " << numZones
+				  << " zones and " << totalDistributedKw << " demand."
+				  << UI::Theme::reset() << "\n";
 	}
 
 	std::shared_ptr<Grid::Substation> getMainSubstation() const {
@@ -172,7 +168,7 @@ class ProceduralGridBuilder {
 
 		if (Util::Random::nextDouble() < 0.4) {
 			auto gen = std::make_shared<Grid::Generator>(
-				"BR_PV_" + std::to_string(idx), distNode,
+				"Generator_PV_" + std::to_string(idx), distNode,
 				Grid::GeneratorMode::PV);
 			double cap = loadKw * 0.5;
 			gen->setTargetP(cap * 0.1);
@@ -184,7 +180,7 @@ class ProceduralGridBuilder {
 
 		if (Util::Random::nextDouble() < 0.8) {
 			auto gen = std::make_shared<Grid::Generator>(
-				"IBR_PV_" + std::to_string(idx), locNode,
+				"Generator_PV_" + std::to_string(idx), locNode,
 				Grid::GeneratorMode::PQ);
 			double cap = loadKw * 0.4;
 			gen->setTargetP(cap * 0.8);
@@ -241,38 +237,30 @@ class ProceduralGridBuilder {
 
 } // namespace
 
-void Generate::execute(Simulation::Engine &engine, std::stringstream &ss) {
-	std::string subcmd;
-	ss >> subcmd;
-	if (subcmd == "grid") {
-		std::string name;
-		std::string popStr;
-		if (ss >> name >> popStr) {
-			try {
-				double pop = parseDouble(popStr);
-				if (pop <= 0 || pop > 100000000.0) {
-					std::cout
-						<< "Population must be between 1 and 100,000,000.\n";
-					return;
-				}
-				std::string cyn = UI::isAnsiEnabled() ? UI::ANSI_CYAN : "";
-				std::string res = UI::isAnsiEnabled() ? UI::ANSI_RESET : "";
+void cmdGenerate(Simulation::Engine &engine,
+				 const std::vector<std::string> &args) {
+	if (args.empty() || args[0] != "grid" || args.size() < 3) {
+		Log::Logger::warn("Usage: generate grid <name> <population>");
+		return;
+	}
 
-				std::cout << cyn << "Generating procedural grid '" << name
-						  << "' for " << pop << "..." << res << "\n";
-
-				ProceduralGridBuilder builder(engine, name, pop);
-				builder.build();
-				Grid::Builder::Builder::setActiveSubstation(
-					builder.getMainSubstation());
-			} catch (...) {
-				std::cout << "Invalid format.\n";
-			}
-		} else {
-			std::cout << "Usage: generate grid <name> <population>\n";
+	try {
+		double pop = IO::InputHandler::parseDouble(args[2]);
+		if (pop <= 0 || pop > 100000000.0) {
+			Log::Logger::error("Population must be between 1 and 100,000,000.");
+			return;
 		}
-	} else {
-		std::cout << "Unknown generate command.\n";
+
+		std::cout << UI::Theme::cyan() << "Generating procedural grid '"
+				  << args[1] << "' for " << pop << "..." << UI::Theme::reset()
+				  << "\n";
+
+		ProceduralGridBuilder builder(engine, args[1], pop);
+		builder.build();
+		Grid::Builder::BuilderShell::setActiveSubstation(
+			builder.getMainSubstation());
+	} catch (...) {
+		Log::Logger::error("Invalid format.");
 	}
 }
 

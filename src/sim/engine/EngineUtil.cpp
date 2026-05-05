@@ -7,6 +7,7 @@
 #include "io/handlers/CSVHandler.hpp"
 #include "log/Diagnostics.hpp"
 #include "log/Errors.hpp"
+#include "log/Logger.hpp"
 #include "sim/Engine.hpp"
 #include <algorithm>
 #include <cmath>
@@ -16,6 +17,14 @@
 #include <string>
 
 namespace GLStation::Simulation {
+
+Grid::GridComponent *Engine::findComponentById(Core::u64 id) const {
+	for (const auto &sub : m_substations)
+		for (const auto &comp : sub->getComponents())
+			if (comp->getId() == id)
+				return comp.get();
+	return nullptr;
+}
 
 bool Engine::openBreakerById(Core::u64 id) {
 	for (auto &sub : m_substations)
@@ -70,16 +79,14 @@ void Engine::exportVoltagesToCSV(const std::string &filename) {
 		return;
 
 	if (needsHeader) {
-		Util::CSVHandler::writeRow(file,
-								   {"Tick", "Category", "Message", "Node",
-									"V_Mag", "V_Ang", "Freq_Hz", "Reserve_kW"});
+		IO::CSVHandler::writeRow(file, Log::kEventCsvHeader);
 	}
 
 	for (const auto &sub : m_substations) {
 		for (const auto &comp : sub->getComponents()) {
 			if (auto node = dynamic_cast<Grid::Node *>(comp.get())) {
 				std::complex<Core::f64> voltage = node->getVoltage();
-				Util::CSVHandler::writeRow(
+				IO::CSVHandler::writeRow(
 					file,
 					{std::to_string(m_currentTick), "RESULT", "Voltage Export",
 					 node->getName(), std::to_string(std::abs(voltage)),

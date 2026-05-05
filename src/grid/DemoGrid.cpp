@@ -17,6 +17,7 @@ namespace GLStation::Simulation {
 	https://www.nationalgridet.com/infrastructure-projects/london-power-tunnels
 	https://www.murphygroup.com/project/london-power-tunnels-phase-2/
 	https://www.murphygroup.com/project/london-power-tunnel-highbury-132kv/
+	https://www.london.gov.uk/who-we-are/what-london-assembly-does/questions-mayor/find-an-answer/belvedere-incinerator
 */
 
 void Engine::createDemoGrid() {
@@ -50,7 +51,7 @@ void Engine::createDemoGrid() {
 
 	auto g_belvedere = std::make_shared<Grid::Generator>(
 		"Belvedere_Incinerator", n_east_132.get(), Grid::GeneratorMode::PV);
-	g_belvedere->setTargetP(70000.0);
+	g_belvedere->setTargetP(100000.0);
 	g_belvedere->setTargetV(1.01);
 	g_belvedere->setPowerBounds(0.0, 80000.0);
 

@@ -10,12 +10,6 @@
 
 namespace GLStation::UI {
 
-const char *ANSI_RESET = "\033[0m";
-const char *ANSI_GREEN = "\033[32m";
-const char *ANSI_YELLOW = "\033[33m";
-const char *ANSI_RED = "\033[31m";
-const char *ANSI_CYAN = "\033[36m";
-
 // we dont really need to bother with the colour stuff forever but still
 static bool s_ansiEnabled = false;
 

@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-namespace GLStation::Util {
+namespace GLStation::IO {
 
 class CSVHandler {
   public:
@@ -12,6 +12,8 @@ class CSVHandler {
 	static std::vector<std::string> parseCSVLine(const std::string &line);
 	static void writeRow(std::ostream &out,
 						 const std::vector<std::string> &fields);
+	static bool isCommentOrEmpty(const std::string &line);
+	static double parseDouble(const std::string &s);
 };
 
-} // namespace GLStation::Util
+} // namespace GLStation::IO

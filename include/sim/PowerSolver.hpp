@@ -33,7 +33,7 @@ class PowerSolver {
 	static void updateSlackGeneratorPowerFromSolution();
 	static void syncBranchFlowsFromPUSolution();
 	static bool resolvePvQLimits();
-	static std::unique_ptr<Util::SparseMatrix<std::complex<Core::f64>>> s_yBus;
+	static std::unique_ptr<SparseMatrix<std::complex<Core::f64>>> s_yBus;
 };
 
 } // namespace GLStation::Simulation

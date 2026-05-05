@@ -1,7 +1,9 @@
 #include "io/handlers/InputHandler.hpp"
+#include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <iostream>
+#include <stdexcept>
 #include <vector>
 
 #ifdef _WIN32
@@ -34,7 +36,7 @@ static int custom_getch() {
 }
 #endif
 
-namespace GLStation::Util {
+namespace GLStation::IO {
 
 static bool isAsciiSpace(unsigned char c) {
 	return c == ' ' || c == '\t' || c == '\r' || c == '\n';
@@ -230,4 +232,10 @@ std::string InputHandler::readLineWithHistory() {
 	}
 }
 
-} // namespace GLStation::Util
+double InputHandler::parseDouble(const std::string &s) {
+	std::string clean = s;
+	clean.erase(std::remove(clean.begin(), clean.end(), ','), clean.end());
+	return std::stod(clean);
+}
+
+} // namespace GLStation::IO

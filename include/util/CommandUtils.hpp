@@ -2,7 +2,7 @@
 #include "sim/Engine.hpp"
 #include <string>
 
-namespace GLStation::IO::Commands {
+namespace GLStation::Util {
 
 struct CommandUtils {
 	static GLStation::Core::u64 parseTicksFromString(const std::string &arg);
@@ -10,4 +10,4 @@ struct CommandUtils {
 									  GLStation::Core::u64 &outTicks);
 };
 
-} // namespace GLStation::IO::Commands
+} // namespace GLStation::Util

@@ -1,7 +1,10 @@
-#include "io/commands/Run.hpp"
+#include "io/commands/Commands.hpp"
 #include "io/handlers/InputHandler.hpp"
+#include "log/Logger.hpp"
+#include "sim/Engine.hpp"
 #include "ui/Dashboard.hpp"
 #include "ui/Terminal.hpp"
+#include "ui/Theme.hpp"
 #include "util/CommandUtils.hpp"
 #include <chrono>
 #include <iostream>
@@ -9,26 +12,23 @@
 
 namespace GLStation::IO::Commands {
 
-void Run::execute(Simulation::Engine &engine, const std::string &arg,
-				  const std::string &extra) {
-	bool realtime = false;
-	if (!extra.empty()) {
-		std::string extNorm = Util::InputHandler::normaliseForComparison(extra);
-		if (extNorm == "realtime") {
-			realtime = true;
-		} else {
-			std::cout << "Usage: run <time> [realtime] | run inf "
-						 "[realtime]"
-					  << std::endl;
-			return;
-		}
-	}
-	if (arg.empty()) {
-		std::cout << "Usage: run <time> | run inf." << std::endl;
+void cmdRun(Simulation::Engine &engine, const std::vector<std::string> &args) {
+	if (args.empty()) {
+		Log::Logger::warn("Usage: run <time> | run inf");
 		return;
 	}
 
-	std::string argNorm = Util::InputHandler::normaliseForComparison(arg);
+	bool realtime = false;
+	if (args.size() >= 2) {
+		if (InputHandler::normaliseForComparison(args[1]) == "realtime") {
+			realtime = true;
+		} else {
+			Log::Logger::warn("Usage: run <time> | run inf");
+			return;
+		}
+	}
+
+	std::string argNorm = InputHandler::normaliseForComparison(args[0]);
 	UI::enableAnsiIfPossible();
 
 	if (argNorm == "inf") {
@@ -71,9 +71,9 @@ void Run::execute(Simulation::Engine &engine, const std::string &arg,
 		UI::printLiveDashboard(engine, !first, false, engine.getTickCount(), 0);
 	} else {
 		Core::u64 durationTicks = 0;
-		if (!CommandUtils::parseRunDurationTicks(arg, durationTicks)) {
-			std::cout << "Usage: run <time> [realtime] | run inf [realtime]"
-					  << std::endl;
+		if (!Util::CommandUtils::parseRunDurationTicks(args[0],
+													   durationTicks)) {
+			Log::Logger::warn("Usage: run <time> | run inf");
 			return;
 		}
 		std::cout << "Running for " << durationTicks

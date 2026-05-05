@@ -1,14 +1,17 @@
-#include "io/commands/Status.hpp"
-#include "ui/Terminal.hpp"
+#include "io/commands/Commands.hpp"
+#include "sim/Engine.hpp"
+#include "ui/Theme.hpp"
 #include <iomanip>
 #include <iostream>
 
 namespace GLStation::IO::Commands {
 
-void Status::execute(Simulation::Engine &engine) {
-	std::string cyn = UI::isAnsiEnabled() ? UI::ANSI_CYAN : "";
-	std::string res = UI::isAnsiEnabled() ? UI::ANSI_RESET : "";
-	std::cout << "\n" << cyn << "--- System Overview ---" << res << std::endl;
+void cmdStatus(Simulation::Engine &engine,
+			   const std::vector<std::string> &args) {
+	(void)args;
+	std::cout << "\n"
+			  << UI::Theme::cyan() << "--- System Overview ---"
+			  << UI::Theme::reset() << std::endl;
 	std::cout << "Frequency:   " << std::setw(8) << std::fixed
 			  << std::setprecision(3) << engine.getSystemFrequency() << " Hz"
 			  << std::endl;
@@ -36,7 +39,8 @@ void Status::execute(Simulation::Engine &engine) {
 			  << " kW" << std::endl;
 	std::cout << "Reserve:     " << std::setw(8) << engine.getReserveMarginKw()
 			  << " kW" << std::endl;
-	std::cout << cyn << "-----------------------" << res << std::endl;
+	std::cout << UI::Theme::cyan() << "-----------------------"
+			  << UI::Theme::reset() << std::endl;
 	for (const auto &sub : engine.getSubstations()) {
 		std::cout << sub->toString() << std::endl;
 	}

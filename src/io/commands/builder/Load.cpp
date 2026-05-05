@@ -1,21 +1,23 @@
 #include "grid/builder/Builder.hpp"
-#include "io/commands/builder/Load.hpp"
+#include "io/commands/BuilderCommands.hpp"
+#include "log/Logger.hpp"
 #include "sim/Engine.hpp"
-#include <iostream>
 
 namespace GLStation::IO::Commands::Builder {
 
-void Load::execute(Simulation::Engine &engine, std::stringstream &ss) {
-	std::string file;
-	ss >> file;
-	if (!file.empty()) {
-		engine.loadGrid(file);
-		if (!engine.getSubstations().empty())
-			Grid::Builder::Builder::setActiveSubstation(
-				engine.getSubstations().front());
-	} else {
-		std::cout << "Usage: load <filename.csv>\n";
+void cmdLoad(Simulation::Engine &engine, const std::vector<std::string> &args) {
+	if (args.empty()) {
+		Log::Logger::warn("Usage: load <filename.csv>");
+		return;
 	}
+	auto status = engine.loadGrid(args[0]);
+	if (!status.isSuccess()) {
+		Log::Logger::error(status.message);
+		return;
+	}
+	if (!engine.getSubstations().empty())
+		Grid::Builder::BuilderShell::setActiveSubstation(
+			engine.getSubstations().front());
 }
 
 } // namespace GLStation::IO::Commands::Builder

@@ -1,95 +1,110 @@
 #include "grid/builder/Builder.hpp"
-#include "io/commands/Breaker.hpp"
-#include "io/commands/Export.hpp"
-#include "io/commands/Find.hpp"
-#include "io/commands/Help.hpp"
-#include "io/commands/Inspect.hpp"
-#include "io/commands/List.hpp"
-#include "io/commands/Run.hpp"
-#include "io/commands/Set.hpp"
-#include "io/commands/Status.hpp"
-#include "io/commands/Tree.hpp"
+#include "io/CommandDef.hpp"
 #include "io/handlers/CommandHandler.hpp"
 #include "io/handlers/InputHandler.hpp"
+#include "log/Logger.hpp"
 #include "sim/Engine.hpp"
-#include "ui/Terminal.hpp"
+#include "ui/Theme.hpp"
 #include <iostream>
 #include <sstream>
+#include <string>
+#include <vector>
 
 namespace GLStation::IO {
 
-void runLoop(Simulation::Engine &engine) {
-	std::string line;
-	while (true) {
-		std::string cyn = UI::isAnsiEnabled() ? UI::ANSI_CYAN : "";
-		std::string res = UI::isAnsiEnabled() ? UI::ANSI_RESET : "";
+enum class ShellMode { Main, Builder };
 
-		std::cout << cyn << "glstation" << res << "@" << engine.getTickCount()
-				  << "ms > " << std::flush;
-		line = Util::InputHandler::readLineWithHistory();
+static void printPrompt(Simulation::Engine &engine, ShellMode mode) {
+	if (mode == ShellMode::Main) {
+		std::cout << UI::Theme::cyan() << "glstation" << UI::Theme::reset()
+				  << "@" << engine.getTickCount() << "ms > " << std::flush;
+	} else {
+		auto sub = Grid::Builder::BuilderShell::getActiveSubstation();
+		std::string subName = sub ? sub->getName() : "None";
+		std::cout << UI::Theme::cyan() << "builder" << UI::Theme::reset() << "["
+				  << subName << "]> " << std::flush;
+	}
+}
+
+static std::vector<std::string> tokenise(const std::string &rest) {
+	std::vector<std::string> args;
+	std::istringstream ss(rest);
+	std::string tok;
+	while (ss >> tok)
+		args.push_back(tok);
+	return args;
+}
+
+void runLoop(Simulation::Engine &engine) {
+	ShellMode mode = ShellMode::Main;
+	std::string line;
+
+	for (;;) {
+		printPrompt(engine, mode);
+		line = InputHandler::readLineWithHistory();
 		if (line == "exit" && !std::cin.good())
 			break;
-		line = Util::InputHandler::trim(line);
+		line = InputHandler::trim(line);
 		if (line.empty())
 			continue;
 
-		std::stringstream ss(line);
+		std::istringstream ss(line);
 		std::string cmd;
 		ss >> cmd;
-		std::string cmdNorm = Util::InputHandler::normaliseForComparison(cmd);
+		std::string cmdNorm = InputHandler::normaliseForComparison(cmd);
 
 		if (cmdNorm == "exit") {
-			break;
-		} else if (cmdNorm == "help") {
-			Commands::Help::execute();
-		} else if (cmdNorm == "build" || cmdNorm == "edit") {
-			Grid::Builder::Builder::runLoop(engine);
-		} else if (cmdNorm == "run") {
-			std::string arg;
-			std::string extra;
-			ss >> arg;
-			if (ss >> extra) {
+			if (mode == ShellMode::Builder) {
+				mode = ShellMode::Main;
+				Log::Logger::info("Exited builder mode.");
+				continue;
 			}
-			Commands::Run::execute(engine, arg, extra);
-		} else if (cmdNorm == "status") {
-			Commands::Status::execute(engine);
-		} else if (cmdNorm == "find") {
-			std::string query;
-			ss >> query;
-			Commands::Find::execute(engine, query);
-		} else if (cmdNorm == "tree") {
-			Commands::Tree::execute(engine);
-		} else if (cmdNorm == "list") {
-			std::string type;
-			ss >> type;
-			Commands::List::execute(engine, type);
-		} else if (cmdNorm == "inspect") {
-			Core::u64 id;
-			if (ss >> id)
-				Commands::Inspect::execute(engine, id);
-			else
-				std::cout << "Usage: inspect <id>." << std::endl;
-		} else if (cmdNorm == "set") {
-			Core::u64 id;
-			std::string param;
-			double val;
-			if (ss >> id >> param >> val)
-				Commands::Set::execute(engine, id, param, val);
-			else
-				std::cout << "Usage: set <id> <param> <value>." << std::endl;
-		} else if (cmdNorm == "open" || cmdNorm == "close") {
-			Core::u64 id;
-			if (ss >> id)
-				Commands::Breaker::execute(engine, cmdNorm, id);
-			else
-				std::cout << "Usage: open <id>  or  close <id>" << std::endl;
-		} else if (cmdNorm == "export") {
-			std::string filename = "gls.csv";
-			ss >> filename;
-			Commands::Export::execute(engine, filename);
-		} else {
-			std::cout << "Error: Unknown Command '" << cmd << "'." << std::endl;
+			break;
 		}
+
+		if (cmdNorm == "help") {
+			const auto &table = (mode == ShellMode::Main)
+									? getMainCommands()
+									: getBuilderCommands();
+			printHelp(table);
+			if (mode == ShellMode::Main) {
+				std::cout << UI::Theme::green() << "  build" << UI::Theme::dim()
+						  << "Enter grid builder mode" << UI::Theme::reset()
+						  << "\n"
+						  << std::endl;
+			}
+			continue;
+		}
+
+		if (mode == ShellMode::Main &&
+			(cmdNorm == "build" || cmdNorm == "edit")) {
+			mode = ShellMode::Builder;
+			std::cout << UI::Theme::cyan() << "Entering builder mode."
+					  << UI::Theme::reset()
+					  << " Type 'help' for commands, 'exit' to return.\n";
+			continue;
+		}
+
+		std::string rest;
+		std::getline(ss, rest);
+		rest = InputHandler::trim(rest);
+		std::vector<std::string> args = tokenise(rest);
+
+		const auto &table = (mode == ShellMode::Main) ? getMainCommands()
+													  : getBuilderCommands();
+
+		bool found = false;
+		for (const auto &def : table) {
+			if (def.name == cmdNorm) {
+				def.handler(engine, args);
+				found = true;
+				break;
+			}
+		}
+
+		if (!found)
+			Log::Logger::error("Unknown command '" + cmd +
+							   "'. Type 'help' for a list.");
 	}
 }
 

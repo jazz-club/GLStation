@@ -1,6 +1,14 @@
-#include "io/commands/Find.hpp"
+#include "grid/Breaker.hpp"
+#include "grid/Generator.hpp"
+#include "grid/Line.hpp"
+#include "grid/Load.hpp"
+#include "grid/Node.hpp"
+#include "grid/Transformer.hpp"
+#include "io/commands/Commands.hpp"
 #include "io/handlers/InputHandler.hpp"
-#include "ui/Terminal.hpp"
+#include "log/Logger.hpp"
+#include "sim/Engine.hpp"
+#include "ui/Theme.hpp"
 #include <iomanip>
 #include <iostream>
 #include <utility>
@@ -8,20 +16,22 @@
 
 namespace GLStation::IO::Commands {
 
-void Find::execute(Simulation::Engine &engine, const std::string &query) {
-	std::string q = Util::InputHandler::trim(query);
-	std::string cyn = UI::isAnsiEnabled() ? UI::ANSI_CYAN : "";
-	std::string res = UI::isAnsiEnabled() ? UI::ANSI_RESET : "";
+void cmdFind(Simulation::Engine &engine, const std::vector<std::string> &args) {
+	if (args.empty()) {
+		Log::Logger::warn("Usage: find <query>");
+		return;
+	}
+	std::string q = InputHandler::trim(args[0]);
 	std::cout << "\n"
-			  << cyn << "--- Search: '" << q << "' ---" << res << std::endl;
+			  << UI::Theme::cyan() << "--- Search: '" << q << "' ---"
+			  << UI::Theme::reset() << std::endl;
 	bool found = false;
 	std::vector<std::pair<Core::u64, std::string>> partial;
-	std::string qNorm = Util::InputHandler::normaliseForComparison(q);
+	std::string qNorm = InputHandler::normaliseForComparison(q);
 	for (const auto &sub : engine.getSubstations()) {
 		for (const auto &comp : sub->getComponents()) {
 			std::string name = comp->getName();
-			std::string nameNorm =
-				Util::InputHandler::normaliseForComparison(name);
+			std::string nameNorm = InputHandler::normaliseForComparison(name);
 			if (name.find(q) != std::string::npos ||
 				(!q.empty() && nameNorm.find(qNorm) != std::string::npos)) {
 				std::cout << "  - [ID: " << std::setw(2) << comp->getId()

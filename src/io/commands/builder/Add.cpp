@@ -7,17 +7,13 @@
 #include "grid/Substation.hpp"
 #include "grid/Transformer.hpp"
 #include "grid/builder/Builder.hpp"
-#include "io/commands/builder/Add.hpp"
+#include "io/commands/BuilderCommands.hpp"
+#include "io/handlers/InputHandler.hpp"
+#include "log/Logger.hpp"
 #include "sim/Engine.hpp"
-#include <algorithm>
 #include <iostream>
 
 namespace GLStation::IO::Commands::Builder {
-
-static double parseDouble(std::string s) {
-	s.erase(std::remove(s.begin(), s.end(), ','), s.end());
-	return std::stod(s);
-}
 
 static Grid::Node *findNode(Simulation::Engine &engine,
 							const std::string &name) {
@@ -32,150 +28,159 @@ static Grid::Node *findNode(Simulation::Engine &engine,
 	return nullptr;
 }
 
-void Add::execute(Simulation::Engine &engine, std::stringstream &ss) {
-	std::string type;
-	ss >> type;
-
-	auto activeSubstation = Grid::Builder::Builder::getActiveSubstation();
+void cmdAdd(Simulation::Engine &engine, const std::vector<std::string> &args) {
+	if (args.empty()) {
+		Log::Logger::warn("Usage: add "
+						  "<substation|node|line|load|generator|transformer|"
+						  "breaker|shunt> ...");
+		return;
+	}
+	std::string type = args[0];
+	auto activeSubstation = Grid::Builder::BuilderShell::getActiveSubstation();
 
 	if (type == "substation") {
-		std::string name;
-		ss >> name;
-		auto sub = std::make_shared<Grid::Substation>(name);
+		if (args.size() < 2) {
+			Log::Logger::warn("Usage: add substation <name>");
+			return;
+		}
+		auto sub = std::make_shared<Grid::Substation>(args[1]);
 		engine.addSubstation(sub);
-		Grid::Builder::Builder::setActiveSubstation(sub);
-		std::cout << "Added substation '" << name << "\n";
+		Grid::Builder::BuilderShell::setActiveSubstation(sub);
+		Log::Logger::info("Added substation '" + args[1] + "'");
 	} else if (type == "node") {
-		std::string name, bvStr;
-		if (ss >> name >> bvStr) {
-			if (activeSubstation) {
-				try {
-					activeSubstation->addComponent(
-						std::make_shared<Grid::Node>(name, parseDouble(bvStr)));
-					std::cout << "Added node '" << name << "'.\n";
-				} catch (...) {
-					std::cout << "Invalid voltage format.\n";
-				}
-			} else
-				std::cout << "No active substation.\n";
-		} else
-			std::cout << "Usage: add node <name> <baseVoltage>\n";
+		if (args.size() < 3) {
+			Log::Logger::warn("Usage: add node <name> <baseVoltage>");
+			return;
+		}
+		if (!activeSubstation) {
+			Log::Logger::error("No active substation.");
+			return;
+		}
+		try {
+			activeSubstation->addComponent(std::make_shared<Grid::Node>(
+				args[1], IO::InputHandler::parseDouble(args[2])));
+			Log::Logger::info("Added node '" + args[1] + "'");
+		} catch (...) {
+			Log::Logger::error("Invalid voltage format.");
+		}
 	} else if (type == "line") {
-		std::string name, from, to, rStr, xStr, bStr;
-		if (ss >> name >> from >> to >> rStr >> xStr) {
-			double b = 0.0;
-			if (ss >> bStr) {
-				try {
-					b = parseDouble(bStr);
-				} catch (...) {
-				}
-			}
-			auto n1 = findNode(engine, from);
-			auto n2 = findNode(engine, to);
-			if (n1 && n2 && activeSubstation) {
-				try {
-					activeSubstation->addComponent(std::make_shared<Grid::Line>(
-						name, n1, n2, parseDouble(rStr), parseDouble(xStr), b));
-					std::cout << "Added line '" << name << "'.\n";
-				} catch (...) {
-					std::cout << "Invalid number format.\n";
-				}
-			} else
-				std::cout << "Nodes not found or no active substation.\n";
-		} else
-			std::cout << "Usage: add line <name> <from> <to> <r> <x> [b]\n";
+		if (args.size() < 6) {
+			Log::Logger::warn("Usage: add line <name> <from> <to> <r> <x> [b]");
+			return;
+		}
+		auto n1 = findNode(engine, args[2]);
+		auto n2 = findNode(engine, args[3]);
+		if (!n1 || !n2 || !activeSubstation) {
+			Log::Logger::error("Nodes not found or no active substation.");
+			return;
+		}
+		try {
+			double b =
+				args.size() >= 7 ? IO::InputHandler::parseDouble(args[6]) : 0.0;
+			activeSubstation->addComponent(std::make_shared<Grid::Line>(
+				args[1], n1, n2, IO::InputHandler::parseDouble(args[4]),
+				IO::InputHandler::parseDouble(args[5]), b));
+			Log::Logger::info("Added line '" + args[1] + "'");
+		} catch (...) {
+			Log::Logger::error("Invalid number format.");
+		}
 	} else if (type == "load") {
-		std::string name, node, kwStr;
-		if (ss >> name >> node >> kwStr) {
-			auto n = findNode(engine, node);
-			if (n && activeSubstation) {
-				try {
-					activeSubstation->addComponent(std::make_shared<Grid::Load>(
-						name, n, parseDouble(kwStr)));
-					std::cout << "Added load '" << name << "'.\n";
-				} catch (...) {
-					std::cout << "Invalid kW format.\n";
-				}
-			} else
-				std::cout << "Node not found or no active substation.\n";
-		} else
-			std::cout << "Usage: add load <name> <node> <max_kw>\n";
+		if (args.size() < 4) {
+			Log::Logger::warn("Usage: add load <name> <node> <max_kw>");
+			return;
+		}
+		auto n = findNode(engine, args[2]);
+		if (!n || !activeSubstation) {
+			Log::Logger::error("Node not found or no active substation.");
+			return;
+		}
+		try {
+			activeSubstation->addComponent(std::make_shared<Grid::Load>(
+				args[1], n, IO::InputHandler::parseDouble(args[3])));
+			Log::Logger::info("Added load '" + args[1] + "'");
+		} catch (...) {
+			Log::Logger::error("Invalid kW format.");
+		}
 	} else if (type == "generator") {
-		std::string name, node, modeStr, pStr, vStr;
-		if (ss >> name >> node >> modeStr >> pStr >> vStr) {
-			auto n = findNode(engine, node);
-			if (n && activeSubstation) {
-				try {
-					Grid::GeneratorMode mode = Grid::GeneratorMode::PQ;
-					if (modeStr == "slack")
-						mode = Grid::GeneratorMode::Slack;
-					else if (modeStr == "pv")
-						mode = Grid::GeneratorMode::PV;
-					auto gen = std::make_shared<Grid::Generator>(name, n, mode);
-					gen->setTargetP(parseDouble(pStr));
-					gen->setTargetV(parseDouble(vStr));
-					activeSubstation->addComponent(gen);
-					std::cout << "Added generator '" << name << "'.\n";
-				} catch (...) {
-					std::cout << "Invalid number format.\n";
-				}
-			} else
-				std::cout << "Node not found or no active substation.\n";
-		} else
-			std::cout << "Usage: add generator <name> <node> "
-						 "<mode(slack/pv/pq)> <target_p> <target_v>\n";
+		if (args.size() < 6) {
+			Log::Logger::warn("Usage: add generator <name> <node> "
+							  "<mode(slack/pv/pq)> <target_p> <target_v>");
+			return;
+		}
+		auto n = findNode(engine, args[2]);
+		if (!n || !activeSubstation) {
+			Log::Logger::error("Node not found or no active substation.");
+			return;
+		}
+		try {
+			Grid::GeneratorMode mode = Grid::GeneratorMode::PQ;
+			if (args[3] == "slack")
+				mode = Grid::GeneratorMode::Slack;
+			else if (args[3] == "pv")
+				mode = Grid::GeneratorMode::PV;
+			auto gen = std::make_shared<Grid::Generator>(args[1], n, mode);
+			gen->setTargetP(IO::InputHandler::parseDouble(args[4]));
+			gen->setTargetV(IO::InputHandler::parseDouble(args[5]));
+			activeSubstation->addComponent(gen);
+			Log::Logger::info("Added generator '" + args[1] + "'");
+		} catch (...) {
+			Log::Logger::error("Invalid number format.");
+		}
 	} else if (type == "transformer") {
-		std::string name, pri, sec, rStr, xStr, tapStr;
-		if (ss >> name >> pri >> sec >> rStr >> xStr >> tapStr) {
-			auto n1 = findNode(engine, pri);
-			auto n2 = findNode(engine, sec);
-			if (n1 && n2 && activeSubstation) {
-				try {
-					activeSubstation->addComponent(
-						std::make_shared<Grid::Transformer>(
-							name, n1, n2, parseDouble(rStr), parseDouble(xStr),
-							parseDouble(tapStr)));
-					std::cout << "Added transformer '" << name << "'.\n";
-				} catch (...) {
-					std::cout << "Invalid number format.\n";
-				}
-			} else
-				std::cout << "Nodes not found or no active substation.\n";
-		} else
-			std::cout
-				<< "Usage: add transformer <name> <pri> <sec> <r> <x> <tap>\n";
+		if (args.size() < 7) {
+			Log::Logger::warn(
+				"Usage: add transformer <name> <pri> <sec> <r> <x> <tap>");
+			return;
+		}
+		auto n1 = findNode(engine, args[2]);
+		auto n2 = findNode(engine, args[3]);
+		if (!n1 || !n2 || !activeSubstation) {
+			Log::Logger::error("Nodes not found or no active substation.");
+			return;
+		}
+		try {
+			activeSubstation->addComponent(std::make_shared<Grid::Transformer>(
+				args[1], n1, n2, IO::InputHandler::parseDouble(args[4]),
+				IO::InputHandler::parseDouble(args[5]),
+				IO::InputHandler::parseDouble(args[6])));
+			Log::Logger::info("Added transformer '" + args[1] + "'");
+		} catch (...) {
+			Log::Logger::error("Invalid number format.");
+		}
 	} else if (type == "breaker") {
-		std::string name, from, to;
-		if (ss >> name >> from >> to) {
-			auto n1 = findNode(engine, from);
-			auto n2 = findNode(engine, to);
-			if (n1 && n2 && activeSubstation) {
-				activeSubstation->addComponent(
-					std::make_shared<Grid::Breaker>(name, n1, n2));
-				std::cout << "Added breaker '" << name << "'.\n";
-			} else
-				std::cout << "Nodes not found or no active substation.\n";
-		} else
-			std::cout << "Usage: add breaker <name> <from> <to>\n";
+		if (args.size() < 4) {
+			Log::Logger::warn("Usage: add breaker <name> <from> <to>");
+			return;
+		}
+		auto n1 = findNode(engine, args[1 + 1]);
+		auto n2 = findNode(engine, args[1 + 2]);
+		if (!n1 || !n2 || !activeSubstation) {
+			Log::Logger::error("Nodes not found or no active substation.");
+			return;
+		}
+		activeSubstation->addComponent(
+			std::make_shared<Grid::Breaker>(args[1], n1, n2));
+		Log::Logger::info("Added breaker '" + args[1] + "'");
 	} else if (type == "shunt") {
-		std::string name, node, gStr, bStr;
-		if (ss >> name >> node >> gStr >> bStr) {
-			auto n = findNode(engine, node);
-			if (n && activeSubstation) {
-				try {
-					activeSubstation->addComponent(
-						std::make_shared<Grid::Shunt>(
-							name, n, parseDouble(gStr), parseDouble(bStr)));
-					std::cout << "Added shunt '" << name << "'.\n";
-				} catch (...) {
-					std::cout << "Invalid number format.\n";
-				}
-			} else
-				std::cout << "Node not found or no active substation.\n";
-		} else
-			std::cout << "Usage: add shunt <name> <node> <g> <b>\n";
+		if (args.size() < 5) {
+			Log::Logger::warn("Usage: add shunt <name> <node> <g> <b>");
+			return;
+		}
+		auto n = findNode(engine, args[2]);
+		if (!n || !activeSubstation) {
+			Log::Logger::error("Node not found or no active substation.");
+			return;
+		}
+		try {
+			activeSubstation->addComponent(std::make_shared<Grid::Shunt>(
+				args[1], n, IO::InputHandler::parseDouble(args[3]),
+				IO::InputHandler::parseDouble(args[4])));
+			Log::Logger::info("Added shunt '" + args[1] + "'");
+		} catch (...) {
+			Log::Logger::error("Invalid number format.");
+		}
 	} else {
-		std::cout << "Unknown component type: " << type << "\n";
+		Log::Logger::error("Unknown component type: " + type);
 	}
 }
 

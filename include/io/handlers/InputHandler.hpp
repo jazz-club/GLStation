@@ -2,7 +2,7 @@
 
 #include <string>
 
-namespace GLStation::Util {
+namespace GLStation::IO {
 
 class InputHandler {
   public:
@@ -10,6 +10,7 @@ class InputHandler {
 	static std::string normaliseForComparison(const std::string &s);
 	static std::string urlEncode(const std::string &s);
 	static std::string readLineWithHistory();
+	static double parseDouble(const std::string &s);
 };
 
-} // namespace GLStation::Util
+} // namespace GLStation::IO

@@ -4,8 +4,9 @@
 #include "grid/Load.hpp"
 #include "grid/Node.hpp"
 #include "grid/Transformer.hpp"
-#include "io/commands/Tree.hpp"
-#include "ui/Terminal.hpp"
+#include "io/commands/Commands.hpp"
+#include "sim/Engine.hpp"
+#include "ui/Theme.hpp"
 #include <iomanip>
 #include <iostream>
 #include <map>
@@ -13,15 +14,16 @@
 
 namespace GLStation::IO::Commands {
 
-void Tree::execute(Simulation::Engine &engine) {
-	std::string cyn = UI::isAnsiEnabled() ? UI::ANSI_CYAN : "";
-	std::string res = UI::isAnsiEnabled() ? UI::ANSI_RESET : "";
-	std::string yel = UI::isAnsiEnabled() ? UI::ANSI_YELLOW : "";
-	std::cout << "\n" << cyn << "--- Grid Topology ---" << res << std::endl;
+void cmdTree(Simulation::Engine &engine, const std::vector<std::string> &args) {
+	(void)args;
+	std::cout << "\n"
+			  << UI::Theme::cyan() << "--- Grid Topology ---"
+			  << UI::Theme::reset() << std::endl;
 	for (const auto &sub : engine.getSubstations()) {
 		std::cout << "\n"
-				  << yel << "[Substation:" << res << " " << sub->getName()
-				  << yel << "]" << res << std::endl;
+				  << UI::Theme::yellow() << "[Substation:" << UI::Theme::reset()
+				  << " " << sub->getName() << UI::Theme::yellow() << "]"
+				  << UI::Theme::reset() << std::endl;
 
 		std::map<Grid::Node *, std::vector<Grid::GridComponent *>> nodeMap;
 		for (const auto &comp : sub->getComponents()) {
@@ -48,12 +50,13 @@ void Tree::execute(Simulation::Engine &engine) {
 		}
 
 		for (auto const &[node, components] : nodeMap) {
-			std::cout << cyn << "  |-- " << res << node->getName() << " [Node "
-					  << node->getId() << "]" << std::endl;
+			std::cout << UI::Theme::cyan() << "  |-- " << UI::Theme::reset()
+					  << node->getName() << " [Node " << node->getId() << "]"
+					  << std::endl;
 			for (auto *comp : components) {
-				std::cout << cyn << "  |   +-- " << res
-						  << "[ID: " << std::setw(2) << comp->getId() << "] "
-						  << comp->getName();
+				std::cout << UI::Theme::cyan() << "  |   +-- "
+						  << UI::Theme::reset() << "[ID: " << std::setw(2)
+						  << comp->getId() << "] " << comp->getName();
 				if (auto b = dynamic_cast<Grid::Breaker *>(comp))
 					std::cout << (b->isOpen() ? " (OPEN)" : " (CLOSED)");
 				std::cout << std::endl;

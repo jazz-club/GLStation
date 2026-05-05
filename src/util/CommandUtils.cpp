@@ -4,7 +4,7 @@
 #include <cmath>
 #include <limits>
 
-namespace GLStation::IO::Commands {
+namespace GLStation::Util {
 
 GLStation::Core::u64
 CommandUtils::parseTicksFromString(const std::string &arg) {
@@ -77,4 +77,4 @@ bool CommandUtils::parseRunDurationTicks(const std::string &arg,
 	return false;
 }
 
-} // namespace GLStation::IO::Commands
+} // namespace GLStation::Util

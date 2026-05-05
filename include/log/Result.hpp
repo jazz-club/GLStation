@@ -7,7 +7,6 @@ enum class ErrorCode {
 	Success,
 	NotFound,
 	ParseError,
-	NetworkError,
 	SimulationError,
 	Unknown
 };

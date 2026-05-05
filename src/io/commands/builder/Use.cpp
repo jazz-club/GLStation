@@ -1,28 +1,23 @@
 #include "grid/Substation.hpp"
 #include "grid/builder/Builder.hpp"
-#include "io/commands/builder/Use.hpp"
+#include "io/commands/BuilderCommands.hpp"
+#include "log/Logger.hpp"
 #include "sim/Engine.hpp"
-#include <iostream>
 
 namespace GLStation::IO::Commands::Builder {
 
-void Use::execute(Simulation::Engine &engine, std::stringstream &ss) {
-	std::string name;
-	ss >> name;
-	if (name.empty()) {
-		std::cout << "Usage: use <substation_name>\n";
+void cmdUse(Simulation::Engine &engine, const std::vector<std::string> &args) {
+	if (args.empty()) {
+		Log::Logger::warn("Usage: use <substation_name>");
 		return;
 	}
-	bool found = false;
 	for (auto &sub : engine.getSubstations()) {
-		if (sub->getName() == name) {
-			Grid::Builder::Builder::setActiveSubstation(sub);
-			found = true;
-			break;
+		if (sub->getName() == args[0]) {
+			Grid::Builder::BuilderShell::setActiveSubstation(sub);
+			return;
 		}
 	}
-	if (!found)
-		std::cout << "Substation '" << name << "' not found.\n";
+	Log::Logger::error("Substation '" + args[0] + "' not found.");
 }
 
 } // namespace GLStation::IO::Commands::Builder

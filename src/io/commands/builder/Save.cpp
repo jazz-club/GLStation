@@ -1,17 +1,17 @@
-#include "io/commands/builder/Save.hpp"
+#include "io/commands/BuilderCommands.hpp"
+#include "log/Logger.hpp"
 #include "sim/Engine.hpp"
-#include <iostream>
 
 namespace GLStation::IO::Commands::Builder {
 
-void Save::execute(Simulation::Engine &engine, std::stringstream &ss) {
-	std::string file;
-	ss >> file;
-	if (!file.empty()) {
-		engine.saveGrid(file);
-	} else {
-		std::cout << "Usage: save <filename.csv>\n";
+void cmdSave(Simulation::Engine &engine, const std::vector<std::string> &args) {
+	if (args.empty()) {
+		Log::Logger::warn("Usage: save <filename.csv>");
+		return;
 	}
+	auto status = engine.saveGrid(args[0]);
+	if (!status.isSuccess())
+		Log::Logger::error(status.message);
 }
 
 } // namespace GLStation::IO::Commands::Builder

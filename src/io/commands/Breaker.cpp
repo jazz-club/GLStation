@@ -1,36 +1,48 @@
 #include "grid/Breaker.hpp"
-#include "grid/Generator.hpp"
-#include "grid/Line.hpp"
-#include "grid/Load.hpp"
-#include "grid/Node.hpp"
-#include "grid/Transformer.hpp"
-#include "io/commands/Breaker.hpp"
+#include "io/commands/Commands.hpp"
+#include "log/Logger.hpp"
+#include "sim/Engine.hpp"
 #include <iostream>
 
 namespace GLStation::IO::Commands {
 
-void Breaker::execute(Simulation::Engine &engine, const std::string &cmdNorm,
-					  GLStation::Core::u64 id) {
-	bool found = false;
-	for (const auto &sub : engine.getSubstations()) {
-		for (const auto &comp : sub->getComponents()) {
-			if (comp->getId() == id) {
-				if (auto breaker = dynamic_cast<Grid::Breaker *>(comp.get())) {
-					breaker->setOpen(cmdNorm == "open");
-					std::cout << "Breaker #" << id << " (" << comp->getName()
-							  << ") is now "
-							  << (breaker->isOpen() ? "OPEN" : "CLOSED")
-							  << std::endl;
-				} else
-					std::cout << "Error: ID " << id << " is not a breaker."
-							  << std::endl;
-				found = true;
-				break;
-			}
-		}
+static void toggleBreaker(Simulation::Engine &engine,
+						  const std::vector<std::string> &args, bool open) {
+	if (args.empty()) {
+		Log::Logger::warn(std::string("Usage: ") + (open ? "open" : "close") +
+						  " <id>");
+		return;
 	}
-	if (!found)
-		std::cout << "No component with ID " << id << std::endl;
+	Core::u64 id;
+	try {
+		id = std::stoull(args[0]);
+	} catch (...) {
+		Log::Logger::error("Invalid ID.");
+		return;
+	}
+
+	auto *comp = engine.findComponentById(id);
+	if (!comp) {
+		Log::Logger::error("No component with ID " + args[0]);
+		return;
+	}
+	auto *breaker = dynamic_cast<Grid::Breaker *>(comp);
+	if (!breaker) {
+		Log::Logger::error("ID " + args[0] + " is not a breaker.");
+		return;
+	}
+	breaker->setOpen(open);
+	std::cout << "Breaker #" << id << " (" << comp->getName() << ") is now "
+			  << (breaker->isOpen() ? "OPEN" : "CLOSED") << std::endl;
+}
+
+void cmdOpen(Simulation::Engine &engine, const std::vector<std::string> &args) {
+	toggleBreaker(engine, args, true);
+}
+
+void cmdClose(Simulation::Engine &engine,
+			  const std::vector<std::string> &args) {
+	toggleBreaker(engine, args, false);
 }
 
 } // namespace GLStation::IO::Commands

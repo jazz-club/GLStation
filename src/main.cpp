@@ -1,19 +1,16 @@
 #include "io/handlers/CommandHandler.hpp"
 #include "sim/Engine.hpp"
 #include "ui/Terminal.hpp"
+#include "ui/Theme.hpp"
 #include <iostream>
 
 int main() {
 	GLStation::UI::enableAnsiIfPossible();
 	try {
-		std::string cyn =
-			GLStation::UI::isAnsiEnabled() ? GLStation::UI::ANSI_CYAN : "";
-		std::string res =
-			GLStation::UI::isAnsiEnabled() ? GLStation::UI::ANSI_RESET : "";
-
 		std::cout << "\n"
-				  << cyn << "   GLStation\n"
-				  << res << "   Type 'help' for commands.\n\n";
+				  << GLStation::UI::Theme::cyan() << "   GLStation\n"
+				  << GLStation::UI::Theme::reset()
+				  << "   Type 'help' for commands.\n\n";
 
 		GLStation::Simulation::Engine engine;
 		engine.initialise();

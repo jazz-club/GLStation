@@ -12,9 +12,8 @@ class Substation;
 
 namespace GLStation::Grid::Builder {
 
-class Builder {
+class BuilderShell {
   public:
-	static void runLoop(Simulation::Engine &engine);
 	static std::shared_ptr<Substation> getActiveSubstation();
 	static void setActiveSubstation(std::shared_ptr<Substation> sub);
 };
