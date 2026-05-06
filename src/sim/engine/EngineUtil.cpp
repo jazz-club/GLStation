@@ -71,7 +71,7 @@ bool Engine::setGenTargetPById(Core::u64 id, Core::f64 powerKw) {
 }
 
 void Engine::exportVoltagesToCSV(const std::string &filename) {
-	std::string target = filename.empty() ? "gls.csv" : filename;
+	std::string target = filename.empty() ? "log.csv" : filename;
 	bool needsHeader =
 		std::ifstream(target).peek() == std::ifstream::traits_type::eof();
 	std::ofstream file(target, std::ios::app);

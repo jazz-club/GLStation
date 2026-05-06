@@ -98,6 +98,13 @@ void runLoop(Simulation::Engine &engine) {
 			if (def.name == cmdNorm) {
 				def.handler(engine, args);
 				found = true;
+
+				if (cmdNorm == "set" || cmdNorm == "open" ||
+					cmdNorm == "close" || cmdNorm == "add" ||
+					cmdNorm == "generate" || cmdNorm == "clear") {
+					engine.saveGrid("grid.csv");
+				}
+
 				break;
 			}
 		}

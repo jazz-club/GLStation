@@ -1,3 +1,4 @@
+#include "grid/Battery.hpp"
 #include "grid/Breaker.hpp"
 #include "grid/Generator.hpp"
 #include "grid/Line.hpp"
@@ -178,6 +179,26 @@ void cmdAdd(Simulation::Engine &engine, const std::vector<std::string> &args) {
 			Log::Logger::info("Added shunt '" + args[1] + "'");
 		} catch (...) {
 			Log::Logger::error("Invalid number format.");
+		}
+	} else if (type == "battery") {
+		if (args.size() < 6) {
+			Log::Logger::warn("Usage: add battery <name> <node> <capacity_kw> "
+							  "<charge_rate_kw> <discharge_rate_kw>");
+			return;
+		}
+		auto n = findNode(engine, args[2]);
+		if (!n || !activeSubstation) {
+			Log::Logger::error("Node not found or no active substation.");
+			return;
+		}
+		try {
+			activeSubstation->addComponent(std::make_shared<Grid::Battery>(
+				args[1], n, IO::InputHandler::parseDouble(args[3]),
+				IO::InputHandler::parseDouble(args[4]),
+				IO::InputHandler::parseDouble(args[5])));
+			Log::Logger::info("Added battery '" + args[1] + "'");
+		} catch (...) {
+			Log::Logger::error("Invalid format.");
 		}
 	} else {
 		Log::Logger::error("Unknown component type: " + type);

@@ -1,3 +1,4 @@
+#include "grid/Battery.hpp"
 #include "grid/Breaker.hpp"
 #include "grid/Generator.hpp"
 #include "grid/GridComponent.hpp"
@@ -60,6 +61,18 @@ void Engine::createDemoGrid() {
 	g_national_west->setTargetP(1500000.0);
 	g_national_west->setTargetV(1.01);
 	g_national_west->setPowerBounds(0.0, 3000000.0);
+
+	auto g_london_array = std::make_shared<Grid::Generator>(
+		"London_Array_Wind", n_east_400.get(), Grid::GeneratorMode::PV);
+	g_london_array->setTargetP(2000000.0);
+	g_london_array->setTargetV(1.01);
+	g_london_array->setPowerBounds(0.0, 3000000.0);
+
+	auto g_solar_farm = std::make_shared<Grid::Generator>(
+		"Southwark_Solar", n_south_132.get(), Grid::GeneratorMode::PV);
+	g_solar_farm->setTargetP(1500000.0);
+	g_solar_farm->setTargetV(1.01);
+	g_solar_farm->setPowerBounds(0.0, 2000000.0);
 
 	auto l_central_commercial = std::make_shared<Grid::Load>(
 		"Westminster_Commercial", n_central_132.get(), 800000.0);
@@ -126,11 +139,17 @@ void Engine::createDemoGrid() {
 	tie_s_c->setCurrentLimit(4000.0);
 	tie_w_c->setCurrentLimit(4000.0);
 
+	auto b_central = std::make_shared<Grid::Battery>(
+		"Westminster_Reserve", n_central_132.get(), 1000000.0, 50000.0,
+		50000.0);
+	b_central->setChargeKw(500000.0);
+
 	s_central->addComponent(n_central_400);
 	s_central->addComponent(n_central_132);
 	s_central->addComponent(l_central_commercial);
 	s_central->addComponent(l_central_residential);
 	s_central->addComponent(t_central);
+	s_central->addComponent(b_central);
 
 	s_north->addComponent(n_north_400);
 	s_north->addComponent(n_north_132);
@@ -144,6 +163,7 @@ void Engine::createDemoGrid() {
 	s_east->addComponent(n_east_400);
 	s_east->addComponent(n_east_132);
 	s_east->addComponent(g_belvedere);
+	s_east->addComponent(g_london_array);
 	s_east->addComponent(l_east_industrial);
 	s_east->addComponent(l_east_residential);
 	s_east->addComponent(t_east);
@@ -151,6 +171,7 @@ void Engine::createDemoGrid() {
 
 	s_south->addComponent(n_south_400);
 	s_south->addComponent(n_south_132);
+	s_south->addComponent(g_solar_farm);
 	s_south->addComponent(l_south_residential);
 	s_south->addComponent(l_south_commercial);
 	s_south->addComponent(t_south);
@@ -195,6 +216,10 @@ void Engine::configureDemoProfiles() {
 				const std::string n = gen->getName();
 				if (n.find("Incinerator") != std::string::npos)
 					gen->setProfile(Grid::GeneratorProfile::Thermal);
+				else if (n.find("Wind") != std::string::npos)
+					gen->setProfile(Grid::GeneratorProfile::Wind);
+				else if (n.find("Solar") != std::string::npos)
+					gen->setProfile(Grid::GeneratorProfile::Solar);
 				else
 					gen->setProfile(Grid::GeneratorProfile::Manual);
 			}

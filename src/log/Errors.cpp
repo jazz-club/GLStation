@@ -6,7 +6,7 @@
 namespace GLStation::Log {
 
 void Errors::save(Core::Tick tick, Severity sev, const std::string &msg) {
-	static const std::string kMasterCsv = "gls.csv";
+	static const std::string kMasterCsv = "log.csv";
 
 	bool needsHeader = !std::filesystem::exists(kMasterCsv) ||
 					   std::filesystem::file_size(kMasterCsv) == 0;

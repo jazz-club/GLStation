@@ -1,3 +1,4 @@
+#include "grid/Battery.hpp"
 #include "grid/Breaker.hpp"
 #include "grid/Generator.hpp"
 #include "grid/GridComponent.hpp"
@@ -62,6 +63,7 @@ void Engine::initialise() {
 	} else {
 		createDemoGrid();
 		configureDemoProfiles();
+		saveGrid("grid.csv");
 	}
 	Log::Logger::info("Grid initialised.");
 }
@@ -181,6 +183,13 @@ Log::Status Engine::saveGrid(const std::string &filename) const {
 				IO::CSVHandler::writeRow(
 					f, {"BREAKER", b->getName(), b->getFromNode()->getName(),
 						b->getToNode()->getName(), b->isOpen() ? "1" : "0"});
+			} else if (auto bat = dynamic_cast<Grid::Battery *>(comp.get())) {
+				IO::CSVHandler::writeRow(f, {"BATTERY", bat->getName(),
+											 bat->getConnectedNode()->getName(),
+											 d2s(bat->getCapacityKw()),
+											 d2s(bat->getMaxChargeRateKw()),
+											 d2s(bat->getMaxDischargeRateKw()),
+											 d2s(bat->getChargeKw())});
 			}
 		}
 		f << "\n";
@@ -348,6 +357,17 @@ Log::Status Engine::loadGrid(const std::string &filename) {
 						name, ctx.nodes[from], ctx.nodes[to]);
 					brk->setOpen(isOpen);
 					activeSub->addComponent(brk);
+				}
+			} else if (type == "BATTERY" && f.size() >= 6) {
+				std::string name = f[1], node = f[2];
+				Core::f64 cap = std::stod(f[3]), cr = std::stod(f[4]),
+						  dr = std::stod(f[5]);
+				Core::f64 currentCharge = f.size() >= 7 ? std::stod(f[6]) : 0.0;
+				if (ctx.nodes.count(node)) {
+					auto bat = std::make_shared<Grid::Battery>(
+						name, ctx.nodes[node], cap, cr, dr);
+					bat->setChargeKw(currentCharge);
+					activeSub->addComponent(bat);
 				}
 			}
 		} catch (const std::exception &e) {

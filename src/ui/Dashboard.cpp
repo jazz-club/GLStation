@@ -276,12 +276,19 @@ void printLiveDashboard(const Simulation::Engine &engine, bool moveUp,
 								  : "-");
 	fSpark += "]";
 	f4 << "  " << fSpark;
-	double imb = engine.getTotalGeneration() - engine.getTotalLoad() -
-				 engine.getTotalLosses();
-	std::string imbColor =
-		(std::abs(imb) > 5.0) ? Theme::yellow() : Theme::reset();
-	p4 << "  " << imbColor << "[=] Imb:  " << std::setw(7) << fmtKw(imb)
-	   << Theme::reset();
+	double totCap = engine.getTotalBatteryCapacity();
+	double totCharge = engine.getTotalBatteryCharge();
+	double resPct = totCap > 1e-6 ? (totCharge / totCap * 100.0) : 0.0;
+	std::string resColor = Theme::green();
+	if (resPct < 20.0 && totCap > 1e-6)
+		resColor = Theme::red();
+	else if (resPct < 50.0 && totCap > 1e-6)
+		resColor = Theme::yellow();
+	else if (totCap <= 1e-6)
+		resColor = Theme::reset();
+
+	p4 << "  " << resColor << "[^] Rsv:  " << std::setw(7) << fmtKw(totCharge)
+	   << Theme::reset() << " " << drawBar(totCharge, totCap);
 	std::string lineInfo = nameWorstLine.empty() ? "None" : nameWorstLine;
 	if (lineInfo.size() > 10)
 		lineInfo = lineInfo.substr(0, 10);
@@ -292,8 +299,8 @@ void printLiveDashboard(const Simulation::Engine &engine, bool moveUp,
 	std::ostringstream f5, p5, h5;
 	f5 << " ";
 	p5 << " ";
-	h5 << "  " << lColor << std::fixed << std::setprecision(1) << worstLinePct
-	   << "% " << Theme::reset() << drawBar(worstLinePct, 100.0)
+	h5 << "  " << lColor << std::fixed << std::setprecision(1) << std::setw(5)
+	   << worstLinePct << "% " << Theme::reset() << drawBar(worstLinePct, 100.0)
 	   << (worstLinePct > 100.0 ? "!" : "");
 	out << bL << fixLen(f5.str(), 15) << bM << fixLen(p5.str(), 34) << bM
 		<< fixLen(h5.str(), 24) << bR;

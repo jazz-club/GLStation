@@ -1,3 +1,4 @@
+#include "grid/Battery.hpp"
 #include "grid/Breaker.hpp"
 #include "grid/Generator.hpp"
 #include "grid/Line.hpp"
@@ -30,6 +31,7 @@ static std::vector<Grid::Load *> s_loadList;
 static std::vector<Grid::Generator *> s_generatorList;
 static std::vector<Grid::Line *> s_lineList;
 static std::vector<Grid::Transformer *> s_trafoList;
+static std::vector<Grid::Battery *> s_batteryList;
 static size_t s_slackIdx = 0;
 static std::vector<char> s_energisedBus;
 static std::vector<std::vector<Core::f64>> s_Jbuf;
@@ -253,6 +255,7 @@ void PowerSolver::buildYBus(
 	s_generatorList.clear();
 	s_lineList.clear();
 	s_trafoList.clear();
+	s_batteryList.clear();
 	std::vector<Grid::Line *> allLines;
 	std::vector<Grid::Transformer *> allTransformers;
 	std::vector<Grid::Breaker *> allBreakers;
@@ -273,6 +276,8 @@ void PowerSolver::buildYBus(
 						   dynamic_cast<Grid::Transformer *>(comp.get())) {
 				allTransformers.push_back(trafo);
 				s_trafoList.push_back(trafo);
+			} else if (auto bat = dynamic_cast<Grid::Battery *>(comp.get())) {
+				s_batteryList.push_back(bat);
 			} else if (auto breaker =
 						   dynamic_cast<Grid::Breaker *>(comp.get())) {
 				allBreakers.push_back(breaker);
@@ -653,6 +658,11 @@ bool PowerSolver::runIteration(const SolverSettings &settings) {
 				Core::f64 pf = load->getPowerFactor();
 				P_sched_pu -= P / sBaseKw();
 				Q_sched_pu -= (P * std::sqrt(1.0 - pf * pf) / pf) / sBaseKw();
+			}
+		}
+		for (auto bat : s_batteryList) {
+			if (bat->getConnectedNode() == s_busNodes[i]) {
+				P_sched_pu += bat->getActivePowerKw() / sBaseKw();
 			}
 		}
 

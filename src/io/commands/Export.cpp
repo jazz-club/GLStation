@@ -7,7 +7,7 @@ namespace GLStation::IO::Commands {
 
 void cmdExport(Simulation::Engine &engine,
 			   const std::vector<std::string> &args) {
-	std::string filename = args.empty() ? "gls.csv" : args[0];
+	std::string filename = args.empty() ? "log.csv" : args[0];
 	engine.exportVoltagesToCSV(filename);
 	Log::Logger::info("Exported to " + filename);
 }

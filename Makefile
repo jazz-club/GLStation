@@ -40,10 +40,10 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp
 
 clean:
 	@echo [CLEAN]
-	@$(RM) $(BUILD_DIR) gls.csv
+	@$(RM) $(BUILD_DIR) log.csv
+	@$(RM) $(BUILD_DIR) grid.csv
 
 run: all
 	@$(BUILD_DIR)/$(APP_NAME)$(EXE_EXT)
-
 
 -include $(DEPS)

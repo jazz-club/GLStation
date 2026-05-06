@@ -48,6 +48,8 @@ class Engine {
 	Core::f64 getTotalLoad() const { return m_totalLoad; }
 	Core::f64 getTotalGeneration() const { return m_totalGeneration; }
 	Core::f64 getTotalLosses() const { return m_totalLosses; }
+	Core::f64 getTotalBatteryCapacity() const { return m_totalBatteryCapacity; }
+	Core::f64 getTotalBatteryCharge() const { return m_totalBatteryCharge; }
 	bool openBreakerById(Core::u64 id);
 	bool closeBreakerById(Core::u64 id);
 	bool setLoadPowerById(Core::u64 id, Core::f64 powerKw);
@@ -74,6 +76,7 @@ class Engine {
 
   private:
 	void processProtectionRelays();
+	void processBatteries();
 	void updateFrequencyDynamics();
 	void applyAGC();
 	void configureDemoProfiles();
@@ -96,6 +99,8 @@ class Engine {
 	Core::f64 m_totalGeneration;
 	Core::f64 m_totalLoad;
 	Core::f64 m_totalLosses;
+	Core::f64 m_totalBatteryCapacity;
+	Core::f64 m_totalBatteryCharge;
 	std::map<Core::u64, Core::u64> m_pendingTrips;
 	std::map<Core::u64, Core::u64> m_overloadStartTick;
 	std::map<Core::u64, Core::u64> m_recloseAtTick;
