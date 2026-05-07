@@ -5,6 +5,7 @@
 #include "grid/Transformer.hpp"
 #include "sim/Engine.hpp"
 #include "sim/PowerSolver.hpp"
+#include "ui/Theme.hpp"
 #include <chrono>
 #include <cmath>
 #include <iomanip>
@@ -107,10 +108,19 @@ void Engine::tick() {
 	updateKpis();
 
 	if (m_currentTick > 0 && m_currentTick % 25000 == 0) {
+		std::string freqColor = UI::Theme::green();
+		if (std::abs(m_systemFrequency - m_nominalHz) > 0.5)
+			freqColor = UI::Theme::red();
+		else if (std::abs(m_systemFrequency - m_nominalHz) > 0.2)
+			freqColor = UI::Theme::yellow();
+
 		std::ostringstream os;
-		os << std::fixed << std::setprecision(1) << (m_totalGeneration / 1000.0)
-		   << "MW Gen | " << (m_totalLoad / 1000.0) << "MW Load | "
-		   << std::setprecision(2) << m_systemFrequency << "Hz";
+		os << UI::Theme::green() << std::fixed << std::setprecision(1)
+		   << (m_totalGeneration / 1000.0) << "MW Gen" << UI::Theme::reset()
+		   << " | " << UI::Theme::yellow() << (m_totalLoad / 1000.0)
+		   << "MW Load" << UI::Theme::reset() << " | " << freqColor
+		   << std::setprecision(2) << m_systemFrequency << "Hz"
+		   << UI::Theme::reset();
 		logEvent(os.str());
 	}
 }

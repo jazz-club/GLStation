@@ -1,6 +1,6 @@
 # GLStation
 
-![GLStation](https://i.imgur.com/jNFGttm.png)
+![GLStation](https://i.imgur.com/JNGSxue.png)
 
 GLStation is a power grid simulator and builder. It has utilities for procedural generation of power grids (currently based on population using generalised averages for consumption).
 
@@ -9,6 +9,8 @@ It features generation and consumption profiles based on real world power source
 The runtime binary has a builder mode that can be accessed using the `build` command. The `help` command can be used in both modes to view a list of currently applicable commands.
 
 GLStation has built-in state serialisation using a save/load system that exports using a normalised CSV format.
+
+![Status](https://i.imgur.com/5OHtjWp.png)
 
 ## Build Instructions
 
@@ -42,6 +44,10 @@ The binary can be automatically run using the `make run` command.
 Downloads of the binary will be added to the releases tab of this repository eventually.
 
 You can learn how to navigate the shells and view available commands using the `help` command.
+
+## Experimental Procedural Generation
+
+Build mode currently features an experimental grid generator for testing purposes, using the `generate` command this can cause misconfigurations and invalid topologies, causing Ybus calculations to fail crashing the program due to the invalid matrix. This is partly expected, use the `validate` command and sanity check procedural grids using the `tree` command. This still does not guarantee that a randomly generated grid will be valid, improvements to this feature will come eventually.
 
 ## State Serialisation & Export
 

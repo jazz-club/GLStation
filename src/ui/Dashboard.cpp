@@ -309,8 +309,7 @@ void printLiveDashboard(const Simulation::Engine &engine, bool moveUp,
 	std::string lastEvent = engine.getLastEvent();
 	if (lastEvent.empty())
 		lastEvent = "Simulation nominal.";
-	if (static_cast<int>(lastEvent.size()) > DASHBOARD_INNER_WIDTH - 6)
-		lastEvent = lastEvent.substr(0, DASHBOARD_INNER_WIDTH - 9) + "...";
+	lastEvent = truncateVisible(lastEvent, DASHBOARD_INNER_WIDTH - 6);
 	out << bL << fixLen("  Log:", DASHBOARD_INNER_WIDTH) << bR;
 	out << bL << fixLen("  " + lastEvent, DASHBOARD_INNER_WIDTH) << bR;
 

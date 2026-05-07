@@ -33,10 +33,9 @@ class Engine {
 	getSubstations() const {
 		return m_substations;
 	}
-	void addSubstation(std::shared_ptr<Grid::Substation> sub) {
-		m_substations.push_back(sub);
-	}
-	void clearSubstations() { m_substations.clear(); }
+	void addSubstation(std::shared_ptr<Grid::Substation> sub);
+	void clearSubstations();
+	void invalidateSolver();
 	Log::Status saveGrid(const std::string &filename) const;
 	Log::Status loadGrid(const std::string &filename);
 	void createDemoGrid();

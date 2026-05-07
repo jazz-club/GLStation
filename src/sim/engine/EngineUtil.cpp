@@ -9,6 +9,7 @@
 #include "log/Errors.hpp"
 #include "log/Logger.hpp"
 #include "sim/Engine.hpp"
+#include "sim/PowerSolver.hpp"
 #include <algorithm>
 #include <cmath>
 #include <complex>
@@ -17,6 +18,18 @@
 #include <string>
 
 namespace GLStation::Simulation {
+
+void Engine::addSubstation(std::shared_ptr<Grid::Substation> sub) {
+	m_substations.push_back(sub);
+	PowerSolver::invalidateYBus();
+}
+
+void Engine::clearSubstations() {
+	m_substations.clear();
+	PowerSolver::invalidateYBus();
+}
+
+void Engine::invalidateSolver() { PowerSolver::invalidateYBus(); }
 
 Grid::GridComponent *Engine::findComponentById(Core::u64 id) const {
 	for (const auto &sub : m_substations)
@@ -32,6 +45,7 @@ bool Engine::openBreakerById(Core::u64 id) {
 			if (auto brk = dynamic_cast<Grid::Breaker *>(comp.get()))
 				if (comp->getId() == id) {
 					brk->setOpen(true);
+					PowerSolver::invalidateYBus();
 					return true;
 				}
 	return false;
@@ -43,6 +57,7 @@ bool Engine::closeBreakerById(Core::u64 id) {
 			if (auto brk = dynamic_cast<Grid::Breaker *>(comp.get()))
 				if (comp->getId() == id) {
 					brk->setOpen(false);
+					PowerSolver::invalidateYBus();
 					return true;
 				}
 	return false;

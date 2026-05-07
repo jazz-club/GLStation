@@ -1,5 +1,6 @@
 #include "grid/Line.hpp"
 #include "sim/PowerSolver.hpp"
+#include "ui/Theme.hpp"
 #include <cmath>
 #include <iomanip>
 #include <sstream>
@@ -82,10 +83,12 @@ void Line::tick(Core::Tick) {
 
 std::string Line::toString() const {
 	std::stringstream ss;
-	ss << "[Line #" << m_id << "] " << m_name << " | "
+	ss << UI::Theme::cyan() << "[Line #" << m_id << "] " << UI::Theme::reset()
+	   << m_name << UI::Theme::dim() << " | "
 	   << (m_from ? m_from->getName() : "None") << " -> "
-	   << (m_to ? m_to->getName() : "None") << " | I: " << std::fixed
-	   << std::setprecision(2) << std::abs(m_currentFlow) << " A";
+	   << (m_to ? m_to->getName() : "None") << UI::Theme::reset()
+	   << " | I: " << std::fixed << std::setprecision(2)
+	   << std::abs(m_currentFlow) << " A";
 	return ss.str();
 }
 

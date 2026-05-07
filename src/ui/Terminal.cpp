@@ -32,6 +32,38 @@ int visibleLength(const std::string &s) {
 	return n;
 }
 
+std::string truncateVisible(const std::string &s, int maxVisible) {
+	if (visibleLength(s) <= maxVisible)
+		return s;
+
+	std::string res;
+	int visibleCount = 0;
+	for (size_t i = 0; i < s.size(); ++i) {
+		if (s[i] == '\033' && i + 1 < s.size() && s[i + 1] == '[') {
+			size_t j = i + 2;
+			res += s[i];
+			res += s[i + 1];
+			while (j < s.size() && (s[j] < 0x40 || s[j] > 0x7E)) {
+				res += s[j];
+				++j;
+			}
+			if (j < s.size())
+				res += s[j];
+			i = j;
+		} else {
+			if (visibleCount < maxVisible - 3) {
+				res += s[i];
+				visibleCount++;
+			} else {
+				res += "...";
+				res += "\033[0m";
+				break;
+			}
+		}
+	}
+	return res;
+}
+
 void enableAnsiIfPossible() {
 	if (s_ansiEnabled)
 		return;

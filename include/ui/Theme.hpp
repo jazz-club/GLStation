@@ -12,6 +12,7 @@ struct Theme {
 	static const std::string &bold();
 	static const std::string &dim();
 	static const std::string &reset();
+	static std::string strip(const std::string &s);
 };
 
 } // namespace GLStation::UI

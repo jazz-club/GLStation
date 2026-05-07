@@ -1,4 +1,5 @@
 #include "grid/Battery.hpp"
+#include "ui/Theme.hpp"
 #include <algorithm>
 #include <sstream>
 
@@ -15,9 +16,13 @@ void Battery::tick(Core::Tick currentTick) { (void)currentTick; }
 
 std::string Battery::toString() const {
 	std::ostringstream os;
-	os << "Battery[" << m_name << "] cap=" << m_capacityKw
-	   << "kW charge=" << m_chargeKw << "kW maxC=" << m_maxChargeRateKw
-	   << "kW maxD=" << m_maxDischargeRateKw << "kW";
+	os << UI::Theme::green() << "Battery[" << UI::Theme::reset() << m_name
+	   << UI::Theme::green() << "] " << UI::Theme::dim()
+	   << "cap=" << UI::Theme::reset() << m_capacityKw << "kW "
+	   << UI::Theme::dim() << "charge=" << UI::Theme::cyan() << m_chargeKw
+	   << "kW" << UI::Theme::dim() << " maxC=" << UI::Theme::reset()
+	   << m_maxChargeRateKw << "kW " << UI::Theme::dim()
+	   << "maxD=" << UI::Theme::reset() << m_maxDischargeRateKw << "kW";
 	return os.str();
 }
 

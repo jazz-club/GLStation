@@ -1,5 +1,6 @@
 #include "grid/Transformer.hpp"
 #include "sim/PowerSolver.hpp"
+#include "ui/Theme.hpp"
 #include <cmath>
 #include <iomanip>
 #include <sstream>
@@ -84,15 +85,17 @@ std::complex<Core::f64> Transformer::getAdmittance() const {
 
 std::string Transformer::toString() const {
 	std::stringstream ss;
-	ss << "[Transformer #" << m_id << "] " << m_name << " | "
+	ss << UI::Theme::cyan() << "[Transformer #" << m_id << "] "
+	   << UI::Theme::reset() << m_name << UI::Theme::dim() << " | "
 	   << (m_primary ? m_primary->getName() : "N/A") << " ("
 	   << (m_primary ? m_primary->getBaseVoltage() : 0.0) << "kV) -> "
 	   << (m_secondary ? m_secondary->getName() : "N/A") << " ("
 	   << (m_secondary ? m_secondary->getBaseVoltage() : 0.0)
-	   << "kV) | Tap: " << std::fixed << std::setprecision(2) << m_tap
+	   << "kV) | Tap: " << UI::Theme::reset() << std::fixed
+	   << std::setprecision(2) << m_tap << UI::Theme::dim()
 	   << ", ph: " << std::setprecision(1) << m_phaseShiftDeg
 	   << " deg, Z: " << std::setprecision(3) << m_resistance << "+j"
-	   << m_reactance;
+	   << m_reactance << UI::Theme::reset();
 	return ss.str();
 }
 

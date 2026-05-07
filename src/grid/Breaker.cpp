@@ -1,5 +1,6 @@
 #include "grid/Breaker.hpp"
 #include "sim/PowerSolver.hpp"
+#include "ui/Theme.hpp"
 #include <sstream>
 
 /*
@@ -22,10 +23,12 @@ void Breaker::tick(Core::Tick) {}
 
 std::string Breaker::toString() const {
 	std::stringstream ss;
-	ss << "[Breaker #" << m_id << "] " << m_name << " | "
+	ss << UI::Theme::cyan() << "[Breaker #" << m_id << "] "
+	   << UI::Theme::reset() << m_name << UI::Theme::dim() << " | "
 	   << (m_from ? m_from->getName() : "N/A") << " <-> "
-	   << (m_to ? m_to->getName() : "N/A")
-	   << " | State: " << (m_isOpen ? "OPEN" : "CLOSED");
+	   << (m_to ? m_to->getName() : "N/A") << UI::Theme::reset() << " | State: "
+	   << (m_isOpen ? UI::Theme::red() + "OPEN" : UI::Theme::green() + "CLOSED")
+	   << UI::Theme::reset();
 	return ss.str();
 }
 

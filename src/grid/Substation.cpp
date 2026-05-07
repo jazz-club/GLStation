@@ -1,4 +1,5 @@
 #include "grid/Substation.hpp"
+#include "ui/Theme.hpp"
 #include <sstream>
 
 /*
@@ -26,8 +27,9 @@ void Substation::tick(Core::Tick currentTick) {
 
 std::string Substation::toString() const {
 	std::stringstream ss;
-	ss << "[Substation #" << m_id << "] " << m_name << " containing "
-	   << m_components.size() << " components:";
+	ss << UI::Theme::yellow() << "[Substation #" << m_id << "] "
+	   << UI::Theme::reset() << m_name << UI::Theme::dim() << " containing "
+	   << m_components.size() << " components:" << UI::Theme::reset();
 	for (const auto &comp : m_components) {
 		ss << "\n  " << comp->toString();
 	}

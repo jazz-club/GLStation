@@ -1,4 +1,6 @@
 #include "grid/Node.hpp"
+#include "ui/Theme.hpp"
+#include <cmath>
 #include <iomanip>
 #include <sstream>
 
@@ -22,9 +24,10 @@ void Node::tick(Core::Tick) {}
 */
 std::string Node::toString() const {
 	std::stringstream ss;
-	ss << "[Node #" << m_id << "] " << m_name << " | " << std::fixed
+	ss << UI::Theme::cyan() << "[Node #" << m_id << "] " << UI::Theme::reset()
+	   << m_name << UI::Theme::dim() << " | " << std::fixed
 	   << std::setprecision(3) << std::abs(m_voltage) << " pu ("
-	   << std::abs(m_voltage) * m_baseVoltage << " kV)";
+	   << std::abs(m_voltage) * m_baseVoltage << " kV)" << UI::Theme::reset();
 	return ss.str();
 }
 

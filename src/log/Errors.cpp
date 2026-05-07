@@ -1,5 +1,6 @@
 #include "io/handlers/CSVHandler.hpp"
 #include "log/Errors.hpp"
+#include "ui/Theme.hpp"
 #include <filesystem>
 #include <fstream>
 
@@ -35,8 +36,9 @@ void Errors::save(Core::Tick tick, Severity sev, const std::string &msg) {
 	}
 
 	if (sev != Severity::Result) {
-		IO::CSVHandler::writeRow(
-			file, {std::to_string(tick), catStr, msg, "", "", "", "", ""});
+		IO::CSVHandler::writeRow(file,
+								 {std::to_string(tick), catStr,
+								  UI::Theme::strip(msg), "", "", "", "", ""});
 	}
 }
 

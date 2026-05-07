@@ -2,6 +2,7 @@
 #include "grid/Line.hpp"
 #include "grid/Node.hpp"
 #include "sim/Engine.hpp"
+#include "sim/PowerSolver.hpp"
 #include <algorithm>
 #include <cmath>
 #include <iomanip>
@@ -50,6 +51,7 @@ void Engine::processProtectionRelays() {
 				m_recloseLockout[id]++;
 				logEvent("[RELAY] Auto-reclosed breaker " + brk->getName(),
 						 Log::Severity::Critical);
+				PowerSolver::invalidateYBus();
 			}
 		}
 	}
@@ -129,6 +131,7 @@ void Engine::processProtectionRelays() {
 								 ", locked out after 3 reclose attempts",
 							 Log::Severity::Critical);
 				}
+				PowerSolver::invalidateYBus();
 			}
 			it = m_pendingTrips.erase(it);
 		} else {

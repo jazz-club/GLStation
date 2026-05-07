@@ -1,5 +1,6 @@
 #include "grid/Load.hpp"
 #include "sim/Engine.hpp"
+#include "ui/Theme.hpp"
 #include "util/Random.hpp"
 #include <cmath>
 #include <iomanip>
@@ -101,11 +102,13 @@ void Load::tick(Core::Tick currentTick) {
 
 std::string Load::toString() const {
 	std::stringstream ss;
-	ss << "[Load #" << m_id << "] " << m_name << " | " << std::fixed
-	   << std::setprecision(2) << m_currentPowerKw << " kW";
+	ss << UI::Theme::yellow() << "[Load #" << m_id << "] " << UI::Theme::reset()
+	   << m_name << UI::Theme::red() << " | " << std::fixed
+	   << std::setprecision(2) << m_currentPowerKw << " kW"
+	   << UI::Theme::reset();
 	if (m_isShed)
-		ss << " [SHED]";
-	ss << " | Connected to: "
+		ss << UI::Theme::red() << " [SHED]" << UI::Theme::reset();
+	ss << UI::Theme::dim() << " | Connected to: " << UI::Theme::reset()
 	   << (m_connectedNode ? m_connectedNode->getName() : "None");
 	return ss.str();
 }

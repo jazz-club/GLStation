@@ -4,6 +4,7 @@
 #include "io/handlers/InputHandler.hpp"
 #include "log/Logger.hpp"
 #include "sim/Engine.hpp"
+#include "sim/PowerSolver.hpp"
 #include "ui/Theme.hpp"
 #include <iostream>
 #include <sstream>
@@ -103,6 +104,7 @@ void runLoop(Simulation::Engine &engine) {
 					cmdNorm == "close" || cmdNorm == "add" ||
 					cmdNorm == "generate" || cmdNorm == "clear") {
 					engine.saveGrid("grid.csv");
+					Simulation::PowerSolver::invalidateYBus();
 				}
 
 				break;

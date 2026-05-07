@@ -1,4 +1,5 @@
 #include "grid/Generator.hpp"
+#include "ui/Theme.hpp"
 #include "util/Random.hpp"
 #include <algorithm>
 #include <cmath>
@@ -124,11 +125,14 @@ std::string Generator::toString() const {
 	else if (m_mode == GeneratorMode::PV)
 		modeStr = "PV";
 	std::stringstream ss;
-	ss << "[Generator #" << m_id << "] " << m_name << " (" << modeStr
-	   << ") connected to: "
+	ss << UI::Theme::green() << "[Generator #" << m_id << "] "
+	   << UI::Theme::reset() << m_name << UI::Theme::dim() << " (" << modeStr
+	   << ") connected to: " << UI::Theme::reset()
 	   << (m_connectedNode ? m_connectedNode->getName() : "NONE")
-	   << " | P=" << std::fixed << std::setprecision(1) << m_actualP << "kW"
-	   << ", V=" << std::fixed << std::setprecision(2) << m_targetV << "pu";
+	   << UI::Theme::green() << " | P=" << std::fixed << std::setprecision(1)
+	   << m_actualP << "kW"
+	   << ", V=" << std::fixed << std::setprecision(2) << m_targetV << "pu"
+	   << UI::Theme::reset();
 	return ss.str();
 }
 

@@ -32,7 +32,7 @@ const std::vector<CommandDef> &getBuilderCommands() {
 		 Commands::Builder::cmdUse},
 		{"save", "<filename.csv>", "Save grid to CSV",
 		 Commands::Builder::cmdSave},
-		{"load", "<filename.csv>", "Load grid from CSV",
+		{"load", "<filename.csv> | demo", "Load grid from CSV or demo",
 		 Commands::Builder::cmdLoad},
 		{"generate", "grid <name> <population>", "Generate procedural grid",
 		 Commands::Builder::cmdGenerate},

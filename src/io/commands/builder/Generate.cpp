@@ -1,3 +1,4 @@
+#include "grid/Battery.hpp"
 #include "grid/Breaker.hpp"
 #include "grid/Generator.hpp"
 #include "grid/Line.hpp"
@@ -41,7 +42,7 @@ class ProceduralGridBuilder {
 	void build() {
 		engine.clearSubstations();
 
-		buildNationalTie();
+		buildRegionalTie();
 		buildZones();
 		buildBackboneRing();
 		buildCrossTies();
@@ -67,7 +68,7 @@ class ProceduralGridBuilder {
 	std::vector<std::shared_ptr<Grid::Node>> backboneNodes;
 	std::vector<Point> backboneCoords;
 
-	void buildNationalTie() {
+	void buildRegionalTie() {
 		mainSub = std::make_shared<Grid::Substation>(name + "_Region_Tie");
 		engine.addSubstation(mainSub);
 
@@ -75,7 +76,7 @@ class ProceduralGridBuilder {
 		mainSub->addComponent(slackNode);
 
 		auto slackGen = std::make_shared<Grid::Generator>(
-			"National_Tie_Gen", slackNode.get(), Grid::GeneratorMode::Slack);
+			"Regional_Tie_Gen", slackNode.get(), Grid::GeneratorMode::Slack);
 		slackGen->setTargetV(1.0);
 		slackGen->setPowerBounds(
 			0.0, baseDemandKw * (0.3 + Util::Random::nextDouble() * 0.6));
@@ -83,6 +84,15 @@ class ProceduralGridBuilder {
 
 		backboneNodes.push_back(slackNode);
 		backboneCoords.push_back({50.0, 50.0});
+
+		if (Util::Random::nextDouble() < 0.5) {
+			double cap = baseDemandKw * 0.2;
+			auto bat = std::make_shared<Grid::Battery>("Battery_Station_",
+													   slackNode.get(), cap,
+													   cap * 0.25, cap * 0.25);
+			bat->setChargeKw(cap * 0.5);
+			mainSub->addComponent(bat);
+		}
 	}
 
 	void buildZones() {
@@ -132,6 +142,28 @@ class ProceduralGridBuilder {
 			addZoneLoads(zoneSub, distNode.get(), locNode.get(), zoneLoad, i);
 			addZoneGeneration(zoneSub, bbNode.get(), distNode.get(),
 							  locNode.get(), zoneLoad, i);
+			addZoneBatteries(zoneSub, distNode.get(), locNode.get(), i);
+		}
+	}
+
+	void addZoneBatteries(std::shared_ptr<Grid::Substation> &sub,
+						  Grid::Node *distNode, Grid::Node *locNode, int idx) {
+		if (Util::Random::nextDouble() < 0.15) {
+			double cap = (baseDemandKw / numZones) * 0.25;
+			auto bat = std::make_shared<Grid::Battery>(
+				"ReserveBatteryLine_" + std::to_string(idx), distNode, cap,
+				cap * 0.5, cap * 0.5);
+			bat->setChargeKw(cap * Util::Random::range(0.2, 0.8));
+			sub->addComponent(bat);
+		}
+
+		if (Util::Random::nextDouble() < 0.3) {
+			double cap = (baseDemandKw / numZones) * 0.1;
+			auto bat = std::make_shared<Grid::Battery>("Reserve_Distribution_" +
+														   std::to_string(idx),
+													   locNode, cap, cap, cap);
+			bat->setChargeKw(cap * Util::Random::range(0.4, 0.9));
+			sub->addComponent(bat);
 		}
 	}
 

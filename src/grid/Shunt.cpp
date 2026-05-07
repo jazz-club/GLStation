@@ -1,5 +1,6 @@
 #include "grid/Shunt.hpp"
 #include "sim/PowerSolver.hpp"
+#include "ui/Theme.hpp"
 #include <iomanip>
 #include <sstream>
 
@@ -18,9 +19,10 @@ void Shunt::setAdmittancePu(Core::f64 gPu, Core::f64 bPu) {
 
 std::string Shunt::toString() const {
 	std::stringstream ss;
-	ss << "[Shunt #" << m_id << "] " << m_name << " | G=" << std::fixed
+	ss << UI::Theme::cyan() << "[Shunt #" << m_id << "] " << UI::Theme::reset()
+	   << m_name << UI::Theme::dim() << " | G=" << std::fixed
 	   << std::setprecision(4) << m_gPu << "pu B=" << m_bPu << "pu -> "
-	   << (m_node ? m_node->getName() : "?");
+	   << (m_node ? m_node->getName() : "?") << UI::Theme::reset();
 	return ss.str();
 }
 
