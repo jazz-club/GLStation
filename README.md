@@ -55,7 +55,7 @@ As mentioned, the `validate` command can be used to test the integrity of the ge
 
 ## State Serialisation & Export
 
-GLStation creates a grid.csv file in the same directory as the binary that has logs for all simulation events and telemetry and includes a saved state of the grid in the same file.
+GLStation creates two files in the binary directory, `grid.csv` and `log.csv`, these files contain the current grid schema and logs of all simulation events, additional logging can be easily configured using the `Logger` utilities.
 
 You export/load a compatible data schema file using the `save` and `import` commands.
 
