@@ -65,7 +65,7 @@ The namesake of the project, a OpenGL frontend, is currently entirely unimplemen
 
 ## 3-Phase Calculations
 
-GLStation currently emmploys a balanced single phase per unit calculation. This approach assumes the phases begin perfectly symmetrical meaning phase shift is a consequence of parameter mismatches. The 3nx3n Jacobian matrix in PowerSolver, using the NR method, would need to scale 3 times to accurately calculate every single phase, while this is not impossible to implement, this requires much more testing and calculating for power flow and stability. Consequently, our current implementation represents phase shift caused by the physical reactance of transmission lines, transformers, nodes etc.
+GLStation currently employs a balanced single phase per unit calculation. This approach assumes the phases begin perfectly symmetrical meaning phase shift is a consequence of parameter mismatches. The 3nx3n Jacobian matrix in PowerSolver, using the NR method, would need to scale 3 times to accurately calculate every single phase, while this is not impossible to implement, this requires much more testing and calculating for power flow and stability. Consequently, our current implementation represents phase shift caused by the physical reactance of transmission lines, transformers, nodes etc.
 
 Entirely realistic 3P solving is a planned future improvement, it was simply out of scope given the resources and time available to us.
 
