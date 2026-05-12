@@ -1,4 +1,5 @@
 #include "io/handlers/InputHandler.hpp"
+#include "ui/Theme.hpp"
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -236,6 +237,14 @@ double InputHandler::parseDouble(const std::string &s) {
 	std::string clean = s;
 	clean.erase(std::remove(clean.begin(), clean.end(), ','), clean.end());
 	return std::stod(clean);
+}
+
+bool InputHandler::confirmAction(const std::string &prompt) {
+	std::cout << UI::Theme::red() << "[DESTRUCTIVE ACTION] "
+			  << UI::Theme::reset() << prompt << " [y/N]: " << std::flush;
+	int ch = custom_getch();
+	std::cout << static_cast<char>(ch) << "\n";
+	return ch == 'y' || ch == 'Y';
 }
 
 } // namespace GLStation::IO

@@ -45,7 +45,7 @@ void Engine::tick() {
 	m_currentTick++;
 	m_simTime += m_simStep;
 	pushSimTickState();
-	m_scenarioManager.update(m_currentTick);
+	m_eventManager.update(m_currentTick);
 
 	m_totalLoad = 0.0;
 	for (auto &sub : m_substations) {
@@ -114,13 +114,24 @@ void Engine::tick() {
 		else if (std::abs(m_systemFrequency - m_nominalHz) > 0.2)
 			freqColor = UI::Theme::yellow();
 
+		auto fmtLogKw = [](double kw) -> std::string {
+			std::ostringstream o;
+			o << std::fixed << std::setprecision(1);
+			if (std::abs(kw) >= 1e6)
+				o << (kw / 1e6) << " GW";
+			else if (std::abs(kw) >= 1e3)
+				o << (kw / 1e3) << " MW";
+			else
+				o << kw << " kW";
+			return o.str();
+		};
+
 		std::ostringstream os;
 		os << UI::Theme::green() << std::fixed << std::setprecision(1)
-		   << (m_totalGeneration / 1000.0) << "MW Gen" << UI::Theme::reset()
-		   << " | " << UI::Theme::yellow() << (m_totalLoad / 1000.0)
-		   << "MW Load" << UI::Theme::reset() << " | " << freqColor
-		   << std::setprecision(2) << m_systemFrequency << "Hz"
-		   << UI::Theme::reset();
+		   << fmtLogKw(m_totalGeneration) << " Gen" << UI::Theme::reset()
+		   << " | " << UI::Theme::yellow() << fmtLogKw(m_totalLoad) << " Load"
+		   << UI::Theme::reset() << " | " << freqColor << std::setprecision(2)
+		   << m_systemFrequency << " Hz" << UI::Theme::reset();
 		logEvent(os.str());
 	}
 }

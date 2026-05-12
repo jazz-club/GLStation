@@ -17,7 +17,8 @@ CXX := g++
 MKDIR := mkdir -p
 RM := rm -rf
 
-CXXFLAGS := -std=c++20 -O2 -Wall -Wextra -Wpedantic -Wconversion -I$(INCLUDE_DIR) -DNDEBUG $(CXXFLAGS_OS)
+CXXFLAGS := -std=c++20 -O3 -Wall -Wextra -Wpedantic -Wconversion -I$(INCLUDE_DIR) -DNDEBUG -flto=auto -funroll-loops $(CXXFLAGS_OS)
+LDFLAGS := -flto -Wl,--gc-sections $(CXXFLAGS_OS)
 
 rwildcard = $(foreach d,$(wildcard $(1)*),$(call rwildcard,$d/,$(2)) $(filter $(subst *,%,$(2)),$d))
 
@@ -31,7 +32,9 @@ all: $(BUILD_DIR)/$(APP_NAME)$(EXE_EXT)
 
 $(BUILD_DIR)/$(APP_NAME)$(EXE_EXT): $(OBJS)
 	@echo [LINK] $@
-	@$(CXX) $(CXXFLAGS_OS) $(OBJS) -o $@
+	@$(CXX) $(OBJS) $(LDFLAGS) -o $@
+	@echo [STRIP] $@
+	@strip $@
 
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp
 	@echo [CXX] $<

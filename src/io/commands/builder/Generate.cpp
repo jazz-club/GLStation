@@ -10,12 +10,14 @@
 #include "grid/builder/Builder.hpp"
 #include "io/commands/BuilderCommands.hpp"
 #include "io/handlers/InputHandler.hpp"
+#include "log/Diagnostics.hpp"
 #include "log/Logger.hpp"
 #include "sim/Engine.hpp"
 #include "ui/Theme.hpp"
 #include "util/Random.hpp"
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <iostream>
 
 namespace GLStation::IO::Commands::Builder {
@@ -47,8 +49,20 @@ class ProceduralGridBuilder {
 		buildBackboneRing();
 		buildCrossTies();
 
+		auto fmtGenKw = [](double kw) -> std::string {
+			std::ostringstream o;
+			o << std::fixed << std::setprecision(1);
+			if (std::abs(kw) >= 1e6)
+				o << (kw / 1e6) << " GW";
+			else if (std::abs(kw) >= 1e3)
+				o << (kw / 1e3) << " MW";
+			else
+				o << kw << " kW";
+			return o.str();
+		};
+
 		std::cout << UI::Theme::cyan() << "Grid generated with " << numZones
-				  << " zones and " << totalDistributedKw << " demand."
+				  << " zones and " << fmtGenKw(totalDistributedKw) << " demand."
 				  << UI::Theme::reset() << "\n";
 	}
 
@@ -276,12 +290,21 @@ void cmdGenerate(Simulation::Engine &engine,
 		return;
 	}
 
+	if (!IO::InputHandler::confirmAction("Generative actions require the grid "
+										 "and log file to be reset, continue?"))
+		return;
+
 	try {
 		double pop = IO::InputHandler::parseDouble(args[2]);
 		if (pop <= 0 || pop > 100000000.0) {
 			Log::Logger::error("Population must be between 1 and 100,000,000.");
 			return;
 		}
+
+		std::filesystem::remove("grid.csv");
+		std::filesystem::remove("log.csv");
+		Log::Diagnostics::clear();
+		engine.getEventManager().clear();
 
 		std::cout << UI::Theme::cyan() << "Generating procedural grid '"
 				  << args[1] << "' for " << pop << "..." << UI::Theme::reset()

@@ -8,7 +8,7 @@
 
 namespace GLStation::Simulation {
 
-class ScenarioManager {
+class EventManager {
   public:
 	using EventAction = std::function<void()>;
 

@@ -39,15 +39,27 @@ void cmdInspect(Simulation::Engine &engine,
 	std::cout << "Type:     " << typeid(*comp).name() << std::endl;
 	std::cout << "Summary:  " << comp->toString() << std::endl;
 
+	auto fmtInspectKw = [](double kw) -> std::string {
+		std::ostringstream o;
+		o << std::fixed << std::setprecision(1);
+		if (std::abs(kw) >= 1e6)
+			o << (kw / 1e6) << " GW";
+		else if (std::abs(kw) >= 1e3)
+			o << (kw / 1e3) << " MW";
+		else
+			o << kw << " kW";
+		return o.str();
+	};
+
 	if (auto line = dynamic_cast<Grid::Line *>(comp)) {
-		std::cout << "Details:  Limit=" << line->getCurrentLimit() << "A"
+		std::cout << "Details:  Limit=" << line->getCurrentLimit() << " A"
 				  << std::endl;
 	} else if (auto gen = dynamic_cast<Grid::Generator *>(comp)) {
-		std::cout << "Details:  P_target=" << gen->getTargetP()
-				  << "kW, V_target=" << gen->getTargetV() << "pu" << std::endl;
+		std::cout << "Details:  P_target=" << fmtInspectKw(gen->getTargetP())
+				  << ", V_target=" << gen->getTargetV() << " pu" << std::endl;
 	} else if (auto load = dynamic_cast<Grid::Load *>(comp)) {
-		std::cout << "Details:  P_max=" << load->getMaxPower()
-				  << "kW, PF=" << load->getPowerFactor() << std::endl;
+		std::cout << "Details:  P_max=" << fmtInspectKw(load->getMaxPower())
+				  << ", PF=" << load->getPowerFactor() << std::endl;
 	}
 }
 

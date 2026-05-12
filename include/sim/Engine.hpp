@@ -3,7 +3,7 @@
 #include "grid/Substation.hpp"
 #include "log/Diagnostics.hpp"
 #include "log/Result.hpp"
-#include "sim/ScenarioManager.hpp"
+#include "sim/EventManager.hpp"
 #include <chrono>
 #include <deque>
 #include <filesystem>
@@ -42,7 +42,7 @@ class Engine {
 	Grid::GridComponent *findComponentById(Core::u64 id) const;
 	Core::Tick getTickCount() const { return m_currentTick; }
 	std::chrono::milliseconds getSimTime() const { return m_simTime; }
-	ScenarioManager &getScenarioManager() { return m_scenarioManager; }
+	EventManager &getEventManager() { return m_eventManager; }
 	Core::f64 getSystemFrequency() const { return m_systemFrequency; }
 	Core::f64 getTotalLoad() const { return m_totalLoad; }
 	Core::f64 getTotalGeneration() const { return m_totalGeneration; }
@@ -93,7 +93,7 @@ class Engine {
 	Core::f64 m_agcIntegralMw;
 	Core::f64 m_rocofHzPerS;
 	std::vector<std::shared_ptr<Grid::Substation>> m_substations;
-	ScenarioManager m_scenarioManager;
+	EventManager m_eventManager;
 	Core::f64 m_systemFrequency;
 	Core::f64 m_totalGeneration;
 	Core::f64 m_totalLoad;

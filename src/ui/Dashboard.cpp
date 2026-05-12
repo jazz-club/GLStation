@@ -126,12 +126,12 @@ void printLiveDashboard(const Simulation::Engine &engine, bool moveUp,
 	auto fmtKw = [](double kw) -> std::string {
 		std::ostringstream o;
 		o << std::fixed << std::setprecision(1);
-		if (kw >= 1e6)
-			o << (kw / 1e6) << "M";
-		else if (kw >= 1e3)
-			o << (kw / 1e3) << "k";
+		if (std::abs(kw) >= 1e6)
+			o << (kw / 1e6) << " GW";
+		else if (std::abs(kw) >= 1e3)
+			o << (kw / 1e3) << " MW";
 		else
-			o << kw;
+			o << kw << " kW";
 		return o.str();
 	};
 
@@ -147,7 +147,7 @@ void printLiveDashboard(const Simulation::Engine &engine, bool moveUp,
 		if (vis < len)
 			return s + std::string(len - vis, ' ');
 		if (vis > len) {
-			return s.substr(0, len);
+			return truncateVisible(s, len);
 		}
 		return s;
 	};
@@ -225,7 +225,7 @@ void printLiveDashboard(const Simulation::Engine &engine, bool moveUp,
 	std::ostringstream f1, p1, h1;
 	f1 << "  " << freqColour << std::fixed << std::setprecision(2) << freq
 	   << " Hz" << Theme::reset();
-	p1 << "  " << Theme::green() << "[+] Gen:  " << std::setw(7)
+	p1 << "  " << Theme::green() << "[+] Gen:  " << std::setw(8)
 	   << fmtKw(engine.getTotalGeneration()) << Theme::reset() << " "
 	   << drawBar(engine.getTotalGeneration(), maxW);
 	h1 << "  " << vColor << "V: " << std::fixed << std::setprecision(2)
@@ -236,7 +236,7 @@ void printLiveDashboard(const Simulation::Engine &engine, bool moveUp,
 	std::ostringstream f2, p2, h2;
 	f2 << "  Nadir: " << std::fixed << std::setprecision(2)
 	   << engine.getFrequencyNadirLifetime();
-	p2 << "  " << Theme::yellow() << "[-] Load: " << std::setw(7)
+	p2 << "  " << Theme::yellow() << "[-] Load: " << std::setw(8)
 	   << fmtKw(engine.getTotalLoad()) << Theme::reset() << " "
 	   << drawBar(engine.getTotalLoad(), maxW);
 	h2 << "  ang: " << std::fixed << std::setprecision(1) << angMinDeg << ".."
@@ -246,7 +246,7 @@ void printLiveDashboard(const Simulation::Engine &engine, bool moveUp,
 
 	std::ostringstream f3, p3, h3;
 	f3 << "  L " << std::fixed << std::setprecision(1) << fMin << " H " << fMax;
-	p3 << "  " << Theme::red() << "[-] Loss: " << std::setw(7)
+	p3 << "  " << Theme::red() << "[-] Loss: " << std::setw(8)
 	   << fmtKw(engine.getTotalLosses()) << Theme::reset() << " "
 	   << drawBar(engine.getTotalLosses(), maxW);
 
@@ -287,7 +287,7 @@ void printLiveDashboard(const Simulation::Engine &engine, bool moveUp,
 	else if (totCap <= 1e-6)
 		resColor = Theme::reset();
 
-	p4 << "  " << resColor << "[^] Rsv:  " << std::setw(7) << fmtKw(totCharge)
+	p4 << "  " << resColor << "[^] Rsv:  " << std::setw(8) << fmtKw(totCharge)
 	   << Theme::reset() << " " << drawBar(totCharge, totCap);
 	std::string lineInfo = nameWorstLine.empty() ? "None" : nameWorstLine;
 	if (lineInfo.size() > 10)
